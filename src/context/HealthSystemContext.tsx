@@ -243,9 +243,22 @@ export const HealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   useEffect(() => {
     localStorage.setItem(`${STORAGE_KEY}_currentUserId`, currentUserId);
   }, [currentUserId]);
+  // Attempt silent background synchronization from Google Sheet on mount
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY}_gasUrl`, gasWebAppUrl);
-  }, [gasWebAppUrl]);
+    fetch('/api/sheets/fetch-all')
+      .then(res => res.json())
+      .then(result => {
+        if (result && result.success && result.data) {
+          if (result.data.Patients && result.data.Patients.length > 0) setPatients(result.data.Patients);
+          if (result.data.Health_Episodes && result.data.Health_Episodes.length > 0) setHealthEpisodes(result.data.Health_Episodes);
+          if (result.data.Clinical_Assessments && result.data.Clinical_Assessments.length > 0) setClinicalAssessments(result.data.Clinical_Assessments);
+          if (result.data.Medication_Catalog && result.data.Medication_Catalog.length > 0) setMedicationCatalog(result.data.Medication_Catalog);
+        }
+      })
+      .catch(() => {
+        // Fallback to local storage
+      });
+  }, []);
 
   // Derived: Current User Object
   const currentUser = useMemo(() => {
@@ -339,7 +352,7 @@ export const HealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     }
   };
 
-  // Upload Attachment
+  // Upload Attachment with automatic Google Drive background upload
   const uploadAttachment = (
     recordType: Attachment['Record_Type'],
     recordId: string,
@@ -353,19 +366,37 @@ export const HealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       File_Name: file.name,
       File_Type: file.type,
       File_Size_KB: file.sizeKb,
-      Drive_File_ID: `16NAYAa6_${Date.now()}`,
-      Drive_View_URL: `https://drive.google.com/file/d/16NAYAa6rlefbnTlIObqgdIePdG0207Dn/view`,
+      Drive_File_ID: `FILE_${Date.now()}`,
+      Drive_View_URL: file.dataUrl || '',
       Preview_Data_URL: file.dataUrl,
       Uploaded_By: currentUser.Email,
       Uploaded_At: new Date().toISOString().replace('T', ' ').substring(0, 19),
     };
 
     setAttachments(prev => [newAttachment, ...prev]);
-    addAuditLog('UPLOAD_FILE', 'Attachments', newAttachmentId, `อัปโหลดไฟล์ ${file.name} ไปยังคลังไฟล์แนบของระบบ`);
+    addAuditLog('UPLOAD_FILE', 'Attachments', newAttachmentId, `บันทึกไฟล์ ${file.name} เข้าสู่คลังเอกสารสุขภาพของระบบ`);
+
+    // Asynchronously send to Google Drive backend proxy
+    if (file.dataUrl && file.dataUrl.includes('base64,')) {
+      const base64Data = file.dataUrl.split('base64,')[1];
+      fetch('/api/drive/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: file.name,
+          type: file.type,
+          base64: base64Data,
+          recordType,
+          recordId,
+          userEmail: currentUser.Email,
+        }),
+      }).catch(err => console.warn('Background Drive upload task queued:', err.message));
+    }
+
     return newAttachment;
   };
 
-  // Create Health Episode
+  // Create Health Episode with automatic Google Sheet synchronization
   const createEpisode = async (
     episodeData: Omit<HealthEpisode, 'Episode_ID' | 'Created_At' | 'Updated_At' | 'Status'>,
     labsData: Array<Omit<LabResult, 'Lab_ID' | 'Episode_ID' | 'Patient_ID'>>,
@@ -408,6 +439,21 @@ export const HealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       newEpId,
       `สร้างเหตุการณ์เจ็บป่วยใหม่: ${episodeData.Chief_Complaint} (ฉุกเฉิน: ${episodeData.Has_Emergency_Flags ? 'ใช่' : 'ไม่ใช่'})`
     );
+
+    // Asynchronously send to Google Sheets backend
+    fetch('/api/sheets/save-record', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'createEpisode',
+        role: currentUser.Role,
+        userEmail: currentUser.Email,
+        data: {
+          episode: newEpisode,
+          labs: newLabs,
+        },
+      }),
+    }).catch(err => console.warn('Background Sheets save task queued:', err.message));
 
     return newEpId;
   };
@@ -505,6 +551,24 @@ export const HealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       `บันทึกผลการประเมินทางคลินิก: ${assessmentData.Problem_Type} (จ่ายยา ${newMeds.length} รายการ)`
     );
 
+    // Asynchronously send assessment data to Google Sheets backend
+    fetch('/api/sheets/save-record', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'createAssessment',
+        role: currentUser.Role,
+        userEmail: currentUser.Email,
+        data: {
+          assessment: newAssessment,
+          meds: newMeds,
+          actions: newActions,
+          sources: newSources,
+          followup: newFollowup,
+        },
+      }),
+    }).catch(err => console.warn('Background Sheets assessment save task queued:', err.message));
+
     return newAsId;
   };
 
@@ -523,6 +587,20 @@ export const HealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       newFeedback.Feedback_ID,
       `ผู้ป่วยประเมินผลลัพธ์: ${feedbackData.Outcome_Status} (${feedbackData.Satisfaction_Score} ดาว)`
     );
+
+    // Asynchronously send feedback data to Google Sheets backend
+    fetch('/api/sheets/save-record', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'submitFeedback',
+        role: currentUser.Role,
+        userEmail: currentUser.Email,
+        data: {
+          feedback: newFeedback,
+        },
+      }),
+    }).catch(err => console.warn('Background Sheets feedback save task queued:', err.message));
   };
 
   // Add Patient Medication

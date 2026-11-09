@@ -37,7 +37,7 @@ export const HomeOverview: React.FC<HomeOverviewProps> = ({
           </div>
 
           <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight leading-tight">
-            Health Episode Record System
+            Personal Pharmacist–Led Digital Primary Care
           </h1>
 
           <p className="text-sm sm:text-base text-emerald-100/90 leading-relaxed">

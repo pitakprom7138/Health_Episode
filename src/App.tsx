@@ -176,7 +176,7 @@ const MainApp: React.FC = () => {
             <div className="w-6 h-6 rounded-lg bg-emerald-700 text-white flex items-center justify-center font-bold text-xs">
               RX
             </div>
-            <span className="font-bold text-slate-700">Health Episode Record System</span>
+            <span className="font-bold text-slate-700">Personal Pharmacist–Led Digital Primary Care</span>
             <span className="text-slate-400">| ระบบบริบาลเภสัชกรรมปฐมภูมิ</span>
           </div>
 

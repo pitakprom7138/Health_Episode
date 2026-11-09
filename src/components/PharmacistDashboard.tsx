@@ -17,7 +17,7 @@ import {
   ShieldAlert,
 } from 'lucide-react';
 import { useHealthSystem } from '../context/HealthSystemContext';
-import { HealthEpisode, Patient, ClinicalAssessment } from '../types/healthSystem';
+import { HealthEpisode, Patient, ClinicalAssessment, Attachment } from '../types/healthSystem';
 
 interface PharmacistDashboardProps {
   onOpenAssessment: (episode: HealthEpisode, patient: Patient) => void;
@@ -37,11 +37,13 @@ export const PharmacistDashboard: React.FC<PharmacistDashboardProps> = ({
     followups,
     patientFeedbacks,
     labResults,
+    attachments,
   } = useHealthSystem();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'ALL' | 'PENDING' | 'ASSESSED' | 'RED_FLAGS'>('ALL');
   const [selectedEpisodeId, setSelectedEpisodeId] = useState<string | null>(null);
+  const [previewAttachment, setPreviewAttachment] = useState<Attachment | null>(null);
 
   // Filter episodes
   const filteredEpisodes = healthEpisodes.filter(ep => {
@@ -80,6 +82,10 @@ export const PharmacistDashboard: React.FC<PharmacistDashboardProps> = ({
 
   const activeLabs = activeEpisode
     ? labResults.filter(l => l.Episode_ID === activeEpisode.Episode_ID)
+    : [];
+
+  const activeAttachments = activeEpisode
+    ? attachments.filter(a => a.Record_ID === activeEpisode.Episode_ID)
     : [];
 
   const activeFeedback = activeAssessment
@@ -451,6 +457,45 @@ export const PharmacistDashboard: React.FC<PharmacistDashboardProps> = ({
                 </div>
               )}
 
+              {/* Attachments Section */}
+              {activeAttachments.length > 0 && (
+                <div className="space-y-2">
+                  <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <FileText className="w-4 h-4 text-emerald-700" />
+                    <span>เอกสารและภาพถ่ายที่แนบไว้ ({activeAttachments.length} รายการ):</span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+                    {activeAttachments.map(att => (
+                      <div
+                        key={att.Attachment_ID}
+                        onClick={() => setPreviewAttachment(att)}
+                        className="p-2.5 bg-slate-50 hover:bg-emerald-50/60 rounded-xl border border-slate-200 cursor-pointer transition flex items-center gap-2 group"
+                      >
+                        {att.Preview_Data_URL || att.Drive_View_URL?.startsWith('data:image') ? (
+                          <img
+                            src={att.Preview_Data_URL || att.Drive_View_URL}
+                            alt={att.File_Name}
+                            className="w-10 h-10 object-cover rounded-lg border border-slate-200 shrink-0"
+                          />
+                        ) : (
+                          <div className="w-10 h-10 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-xs shrink-0">
+                            DOC
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <div className="font-semibold text-slate-800 truncate text-[11px] group-hover:text-emerald-800">
+                            {att.File_Name}
+                          </div>
+                          <div className="text-[10px] text-slate-400">
+                            {att.File_Size_KB} KB • คลิกดูภาพ
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Assessment Done Details */}
               {activeAssessment ? (
                 <div className="p-5 bg-emerald-50/80 border border-emerald-300 rounded-3xl space-y-3">
@@ -511,6 +556,53 @@ export const PharmacistDashboard: React.FC<PharmacistDashboardProps> = ({
           )}
         </div>
       </div>
+
+      {/* Attachment Preview Modal */}
+      {previewAttachment && (
+        <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-bold text-sm text-slate-900">{previewAttachment.File_Name}</h3>
+                <span className="text-[11px] text-slate-400">
+                  ขนาด {previewAttachment.File_Size_KB} KB • บันทึกเมื่อ {previewAttachment.Uploaded_At}
+                </span>
+              </div>
+              <button
+                onClick={() => setPreviewAttachment(null)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center font-bold text-slate-600 text-xs"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="bg-slate-100 rounded-2xl p-2 flex items-center justify-center min-h-[200px] max-h-[65vh] overflow-auto">
+              {previewAttachment.Preview_Data_URL || previewAttachment.Drive_View_URL?.startsWith('data:image') ? (
+                <img
+                  src={previewAttachment.Preview_Data_URL || previewAttachment.Drive_View_URL}
+                  alt={previewAttachment.File_Name}
+                  className="max-h-[60vh] rounded-xl object-contain shadow-xs"
+                />
+              ) : (
+                <div className="text-center p-8 text-slate-500 text-xs">
+                  <FileText className="w-12 h-12 text-slate-400 mx-auto mb-2" />
+                  <p className="font-bold text-slate-700">{previewAttachment.File_Name}</p>
+                  <p className="text-[11px] text-slate-400 mt-1">ไฟล์เอกสารถูกจัดเก็บในระบบอย่างปลอดภัย</p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end">
+              <button
+                onClick={() => setPreviewAttachment(null)}
+                className="px-4 py-2 bg-slate-800 text-white rounded-xl text-xs font-bold hover:bg-slate-900 transition"
+              >
+                ปิดหน้าต่าง
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
