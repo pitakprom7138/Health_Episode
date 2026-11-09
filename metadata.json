@@ -1,0 +1,6 @@
+{
+  "name": "Health Episode Record System",
+  "description": "ระบบบันทึกประวัติการเจ็บป่วยและการให้คำปรึกษาด้านสุขภาพโดยเภสัชกร เชื่อมโยงข้อมูลผู้ป่วย เภสัชกร และผู้ดูแลระบบ พร้อมโครงสร้างฐานข้อมูลเวชระเบียน 16 ตารางสัมพันธ์",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,32 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'Sarabun', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    color: #1e293b;
+    background-color: #f8fafc;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Prompt', 'Sarabun', sans-serif;
+  }
+}
+
+/* Custom Pharmacy Healthcare Theme Colors */
+:root {
+  --pharmacy-green: #0D5C3A;
+  --pharmacy-green-dark: #094028;
+  --pharmacy-green-light: #10B981;
+  --pharmacy-mint: #E8F5E9;
+  --pharmacy-accent: #14B8A6;
+}
+
+/* Print styles for patient record and episode summary */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+}
