@@ -308,7 +308,7 @@ export const AssessmentModal: React.FC<AssessmentModalProps> = ({
             <div>
               <h2 className="text-lg font-bold">บันทึกผลการประเมินทางคลินิกโดยเภสัชกร</h2>
               <p className="text-xs text-emerald-200">
-                เคส: {episode.Episode_ID} | ผู้ป่วย: {patient.Full_Name} ({patient.Citizen_ID_Or_HN}) | เภสัชกร: {currentPharmacist?.Full_Name || currentUser.Full_Name} ({currentPharmacist?.License_No || 'ภ.19842'})
+                เคส: {episode.Episode_ID} | ผู้ป่วย: {patient.Full_Name} ({patient.Citizen_ID_Or_HN}) | เภสัชกร: {currentPharmacist?.Full_Name || currentUser?.Full_Name || 'เภสัชกรผู้ประเมิน'} ({currentPharmacist?.License_No || 'ภ.19842'})
               </p>
             </div>
           </div>

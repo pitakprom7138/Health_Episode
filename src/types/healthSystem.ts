@@ -164,15 +164,44 @@ export interface Attachment {
 // 12. Users Table
 export interface SystemUser {
   User_ID: string; // PK
-  Email: string;
+  Email: string; // Username for login
   Full_Name: string;
   Role: 'Patient' | 'Pharmacist' | 'Admin';
   Status: 'Active' | 'Inactive' | 'Pending';
   Linked_Patient_ID?: string; // FK -> Patients.Patient_ID
   Linked_Pharmacist_ID?: string; // FK -> Pharmacists.Pharmacist_ID
+  Phone_Password?: string; // Phone number used as password
   Last_Login: string;
   Created_At: string;
 }
+
+export interface RegisterPatientParams {
+  role: 'Patient';
+  fullName: string;
+  email: string;
+  phone: string;
+  citizenIdOrHn?: string;
+  gender: 'ชาย' | 'หญิง' | 'อื่นๆ';
+  dob: string;
+  bloodGroup: 'A' | 'B' | 'AB' | 'O' | 'Unknown';
+  chronicDiseases?: string[];
+  knownAllergies?: string[];
+  address?: string;
+  emergencyContact?: string;
+  emergencyPhone?: string;
+}
+
+export interface RegisterPharmacistParams {
+  role: 'Pharmacist';
+  fullName: string;
+  email: string;
+  phone: string;
+  licenseNo: string;
+  hospitalOrStore: string;
+  specialization?: string;
+}
+
+export type RegisterParams = RegisterPatientParams | RegisterPharmacistParams;
 
 // 13. Pharmacists Table
 export interface Pharmacist {
@@ -220,7 +249,7 @@ export interface AuditLog {
   User_ID: string;
   User_Email: string;
   Role: 'Patient' | 'Pharmacist' | 'Admin';
-  Action: 'LOGIN' | 'LOGOUT' | 'CREATE_EPISODE' | 'UPDATE_EPISODE' | 'CREATE_ASSESSMENT' | 'UPDATE_ASSESSMENT' | 'SUBMIT_FEEDBACK' | 'UPLOAD_FILE' | 'UPDATE_USER' | 'EXPORT_SHEETS' | 'DISPENSE_DRUG';
+  Action: 'LOGIN' | 'LOGOUT' | 'REGISTER' | 'CREATE_EPISODE' | 'UPDATE_EPISODE' | 'CREATE_ASSESSMENT' | 'UPDATE_ASSESSMENT' | 'SUBMIT_FEEDBACK' | 'UPLOAD_FILE' | 'UPDATE_USER' | 'EXPORT_SHEETS' | 'DISPENSE_DRUG';
   Table_Affected: string;
   Record_ID: string;
   Details: string;

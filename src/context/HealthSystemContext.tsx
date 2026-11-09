@@ -16,6 +16,7 @@ import {
   LabResult,
   DrugUsageSummary,
   AuditLog,
+  RegisterParams,
 } from '../types/healthSystem';
 import {
   INITIAL_PATIENTS,
@@ -56,9 +57,14 @@ interface HealthContextType {
   auditLogs: AuditLog[];
 
   // Current Auth State
-  currentUser: SystemUser;
+  currentUser: SystemUser | null;
   currentPatient: Patient | null;
   currentPharmacist: Pharmacist | null;
+  isAuthenticated: boolean;
+  login: (email: string, phonePassword: string) => { success: boolean; message: string; user?: SystemUser };
+  register: (params: RegisterParams) => Promise<{ success: boolean; message: string; user?: SystemUser }>;
+  logout: () => void;
+  quickLoginAs: (role: 'Patient' | 'Pharmacist' | 'Admin') => void;
   switchUser: (userId: string) => void;
   quickSwitchRole: (role: 'Patient' | 'Pharmacist' | 'Admin') => void;
 
@@ -182,10 +188,10 @@ export const HealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     return saved ? JSON.parse(saved) : INITIAL_AUDIT_LOGS;
   });
 
-  // Current User (Defaults to Patient Somchai for friendly initial view)
-  const [currentUserId, setCurrentUserId] = useState<string>(() => {
+  // Current User (Defaults to Somchai for testing or loaded from localStorage)
+  const [currentUserId, setCurrentUserId] = useState<string | null>(() => {
     const saved = localStorage.getItem(`${STORAGE_KEY}_currentUserId`);
-    return saved || 'USR001';
+    return saved !== null && saved !== '' ? saved : 'USR001';
   });
 
   const [gasWebAppUrl, setGasWebAppUrl] = useState<string>(() => {
@@ -241,40 +247,29 @@ export const HealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     localStorage.setItem(`${STORAGE_KEY}_auditLogs`, JSON.stringify(auditLogs));
   }, [auditLogs]);
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY}_currentUserId`, currentUserId);
+    if (currentUserId) {
+      localStorage.setItem(`${STORAGE_KEY}_currentUserId`, currentUserId);
+    } else {
+      localStorage.removeItem(`${STORAGE_KEY}_currentUserId`);
+    }
   }, [currentUserId]);
-  // Attempt silent background synchronization from Google Sheet on mount
-  useEffect(() => {
-    fetch('/api/sheets/fetch-all')
-      .then(res => res.json())
-      .then(result => {
-        if (result && result.success && result.data) {
-          if (result.data.Patients && result.data.Patients.length > 0) setPatients(result.data.Patients);
-          if (result.data.Health_Episodes && result.data.Health_Episodes.length > 0) setHealthEpisodes(result.data.Health_Episodes);
-          if (result.data.Clinical_Assessments && result.data.Clinical_Assessments.length > 0) setClinicalAssessments(result.data.Clinical_Assessments);
-          if (result.data.Medication_Catalog && result.data.Medication_Catalog.length > 0) setMedicationCatalog(result.data.Medication_Catalog);
-        }
-      })
-      .catch(() => {
-        // Fallback to local storage
-      });
-  }, []);
 
-  // Derived: Current User Object
+  // Derived: Current User Object (null when logged out)
   const currentUser = useMemo(() => {
-    return users.find(u => u.User_ID === currentUserId) || users[0];
+    if (!currentUserId) return null;
+    return users.find(u => u.User_ID === currentUserId) || null;
   }, [users, currentUserId]);
 
   // Derived: Current Linked Patient (if role == Patient)
   const currentPatient = useMemo(() => {
-    if (currentUser.Role !== 'Patient') return null;
-    return patients.find(p => p.Patient_ID === currentUser.Linked_Patient_ID) || patients[0];
+    if (!currentUser || currentUser.Role !== 'Patient') return null;
+    return patients.find(p => p.Patient_ID === currentUser.Linked_Patient_ID) || null;
   }, [currentUser, patients]);
 
   // Derived: Current Linked Pharmacist (if role == Pharmacist)
   const currentPharmacist = useMemo(() => {
-    if (currentUser.Role !== 'Pharmacist') return null;
-    return pharmacists.find(ph => ph.Pharmacist_ID === currentUser.Linked_Pharmacist_ID) || pharmacists[0];
+    if (!currentUser || currentUser.Role !== 'Pharmacist') return null;
+    return pharmacists.find(ph => ph.Pharmacist_ID === currentUser.Linked_Pharmacist_ID) || null;
   }, [currentUser, pharmacists]);
 
   // 15. Aggregated Table: Drug_Usage_Summary
@@ -322,9 +317,9 @@ export const HealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     const newLog: AuditLog = {
       Log_ID: `LOG${Date.now()}`,
       Timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
-      User_ID: currentUser.User_ID,
-      User_Email: currentUser.Email,
-      Role: currentUser.Role,
+      User_ID: currentUser ? currentUser.User_ID : 'GUEST',
+      User_Email: currentUser ? currentUser.Email : 'guest@system',
+      Role: currentUser ? currentUser.Role : 'Patient',
       Action: action,
       Table_Affected: table,
       Record_ID: recordId,
@@ -332,6 +327,187 @@ export const HealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       IP_Address_Or_Client: 'Web Client / AI Studio Session',
     };
     setAuditLogs(prev => [newLog, ...prev]);
+  };
+
+  // Login with Email as Username and Phone as Password
+  const login = (email: string, phonePassword: string): { success: boolean; message: string; user?: SystemUser } => {
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanInputPhone = phonePassword.replace(/\D/g, '');
+
+    const foundUser = users.find(u => u.Email.trim().toLowerCase() === cleanEmail);
+    if (!foundUser) {
+      return { success: false, message: 'ไม่พบบัญชีผู้ใช้นี้ในระบบ กรุณาตรวจสอบอีเมลหรือสมัครสมาชิกใหม่' };
+    }
+
+    if (foundUser.Status === 'Inactive') {
+      return { success: false, message: 'บัญชีนี้ถูกระงับการใช้งาน กรุณาติดต่อผู้ดูแลระบบ' };
+    }
+
+    // Determine expected phone password for this user
+    let expectedPhone = foundUser.Phone_Password || '';
+    if (!expectedPhone && foundUser.Linked_Patient_ID) {
+      const pt = patients.find(p => p.Patient_ID === foundUser.Linked_Patient_ID);
+      expectedPhone = pt?.Phone || '';
+    }
+    if (!expectedPhone && foundUser.Linked_Pharmacist_ID) {
+      const ph = pharmacists.find(p => p.Pharmacist_ID === foundUser.Linked_Pharmacist_ID);
+      expectedPhone = ph?.Phone || '';
+    }
+    if (!expectedPhone && foundUser.Role === 'Admin') {
+      expectedPhone = '080-999-8877';
+    }
+
+    const cleanExpectedPhone = expectedPhone.replace(/\D/g, '');
+    const isPasswordValid =
+      (cleanInputPhone && cleanExpectedPhone && cleanInputPhone === cleanExpectedPhone) ||
+      phonePassword.trim() === expectedPhone.trim();
+
+    if (!isPasswordValid) {
+      return { success: false, message: 'รหัสผ่าน (เบอร์โทรศัพท์) ไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง' };
+    }
+
+    setCurrentUserId(foundUser.User_ID);
+    localStorage.setItem(`${STORAGE_KEY}_currentUserId`, foundUser.User_ID);
+    addAuditLog('LOGIN', 'Users', foundUser.User_ID, `เข้าสู่ระบบสำเร็จในบทบาท ${foundUser.Role} (${foundUser.Full_Name})`);
+    return { success: true, message: 'เข้าสู่ระบบสำเร็จ', user: foundUser };
+  };
+
+  // Register new user (Patient or Pharmacist)
+  const register = async (params: RegisterParams): Promise<{ success: boolean; message: string; user?: SystemUser }> => {
+    const cleanEmail = params.email.trim().toLowerCase();
+    const existing = users.find(u => u.Email.trim().toLowerCase() === cleanEmail);
+    if (existing) {
+      return { success: false, message: 'อีเมลนี้ถูกใช้งานแล้วในระบบ กรุณาใช้อีเมลอื่น หรือเข้าสู่ระบบ' };
+    }
+
+    const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    const newUserId = `USR${String(users.length + 1).padStart(3, '0')}`;
+
+    if (params.role === 'Patient') {
+      const newPtId = `PT${String(patients.length + 1).padStart(6, '0')}`;
+      const newPatient: Patient = {
+        Patient_ID: newPtId,
+        Full_Name: params.fullName.trim(),
+        Citizen_ID_Or_HN: params.citizenIdOrHn?.trim() || `HN-${Date.now().toString().slice(-6)}`,
+        DOB: params.dob || '1990-01-01',
+        Gender: params.gender || 'อื่นๆ',
+        Phone: params.phone.trim(),
+        Email: cleanEmail,
+        Address: params.address?.trim() || '',
+        Emergency_Contact: params.emergencyContact?.trim() || '',
+        Emergency_Phone: params.emergencyPhone?.trim() || '',
+        Blood_Group: params.bloodGroup || 'Unknown',
+        Chronic_Diseases: params.chronicDiseases || [],
+        Known_Allergies: params.knownAllergies || [],
+        Created_At: now,
+        Updated_At: now,
+      };
+
+      const newUser: SystemUser = {
+        User_ID: newUserId,
+        Email: cleanEmail,
+        Full_Name: params.fullName.trim(),
+        Role: 'Patient',
+        Status: 'Active',
+        Linked_Patient_ID: newPtId,
+        Phone_Password: params.phone.trim(),
+        Last_Login: now,
+        Created_At: now,
+      };
+
+      setPatients(prev => [newPatient, ...prev]);
+      setUsers(prev => [newUser, ...prev]);
+      setCurrentUserId(newUserId);
+      localStorage.setItem(`${STORAGE_KEY}_currentUserId`, newUserId);
+
+      addAuditLog('REGISTER', 'Users', newUserId, `ผู้ป่วยลงทะเบียนบัญชีใหม่: ${params.fullName}`);
+
+      // Save to Google Sheets backend
+      fetch('/api/sheets/save-record', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'registerUser',
+          role: 'Patient',
+          userEmail: cleanEmail,
+          data: {
+            user: newUser,
+            patient: newPatient,
+          },
+        }),
+      }).catch(err => console.warn('Background Sheets user register save:', err.message));
+
+      return { success: true, message: 'สมัครสมาชิกสำเร็จ และเข้าสู่ระบบเรียบร้อย', user: newUser };
+    } else {
+      // Pharmacist registration
+      const newPhId = `PH${String(pharmacists.length + 1).padStart(3, '0')}`;
+      const newPharmacist: Pharmacist = {
+        Pharmacist_ID: newPhId,
+        License_No: params.licenseNo.trim(),
+        Full_Name: params.fullName.trim(),
+        Hospital_Or_Store_Affiliation: params.hospitalOrStore.trim(),
+        Phone: params.phone.trim(),
+        Email: cleanEmail,
+        Specialization: params.specialization?.trim() || 'เภสัชกรรมปฐมภูมิ',
+        Active_Status: true,
+        Created_At: now,
+      };
+
+      const newUser: SystemUser = {
+        User_ID: newUserId,
+        Email: cleanEmail,
+        Full_Name: params.fullName.trim(),
+        Role: 'Pharmacist',
+        Status: 'Active',
+        Linked_Pharmacist_ID: newPhId,
+        Phone_Password: params.phone.trim(),
+        Last_Login: now,
+        Created_At: now,
+      };
+
+      setPharmacists(prev => [newPharmacist, ...prev]);
+      setUsers(prev => [newUser, ...prev]);
+      setCurrentUserId(newUserId);
+      localStorage.setItem(`${STORAGE_KEY}_currentUserId`, newUserId);
+
+      addAuditLog('REGISTER', 'Users', newUserId, `เภสัชกรลงทะเบียนบัญชีใหม่: ${params.fullName} (${params.licenseNo})`);
+
+      // Save to Google Sheets backend
+      fetch('/api/sheets/save-record', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'registerUser',
+          role: 'Pharmacist',
+          userEmail: cleanEmail,
+          data: {
+            user: newUser,
+            pharmacist: newPharmacist,
+          },
+        }),
+      }).catch(err => console.warn('Background Sheets pharmacist register save:', err.message));
+
+      return { success: true, message: 'สมัครสมาชิกเภสัชกรสำเร็จ และเข้าสู่ระบบเรียบร้อย', user: newUser };
+    }
+  };
+
+  // Logout
+  const logout = () => {
+    if (currentUser) {
+      addAuditLog('LOGOUT', 'Users', currentUser.User_ID, `ออกจากระบบ (${currentUser.Full_Name})`);
+    }
+    setCurrentUserId(null);
+    localStorage.removeItem(`${STORAGE_KEY}_currentUserId`);
+  };
+
+  // Quick Login As (for testing)
+  const quickLoginAs = (role: 'Patient' | 'Pharmacist' | 'Admin') => {
+    const target = users.find(u => u.Role === role && u.Status === 'Active');
+    if (target) {
+      setCurrentUserId(target.User_ID);
+      localStorage.setItem(`${STORAGE_KEY}_currentUserId`, target.User_ID);
+      addAuditLog('LOGIN', 'Users', target.User_ID, `เข้าสู่ระบบด่วนในบทบาท ${role} (${target.Full_Name})`);
+    }
   };
 
   // Switch User
@@ -345,11 +521,7 @@ export const HealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
   // Quick Switch Role
   const quickSwitchRole = (role: 'Patient' | 'Pharmacist' | 'Admin') => {
-    const target = users.find(u => u.Role === role);
-    if (target) {
-      setCurrentUserId(target.User_ID);
-      addAuditLog('LOGIN', 'Users', target.User_ID, `สลับสิทธิ์การใช้งานเป็น ${role} (${target.Full_Name})`);
-    }
+    quickLoginAs(role);
   };
 
   // Upload Attachment with automatic Google Drive background upload
@@ -369,7 +541,7 @@ export const HealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       Drive_File_ID: `FILE_${Date.now()}`,
       Drive_View_URL: file.dataUrl || '',
       Preview_Data_URL: file.dataUrl,
-      Uploaded_By: currentUser.Email,
+      Uploaded_By: currentUser?.Email || 'system@patient',
       Uploaded_At: new Date().toISOString().replace('T', ' ').substring(0, 19),
     };
 
@@ -388,7 +560,7 @@ export const HealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           base64: base64Data,
           recordType,
           recordId,
-          userEmail: currentUser.Email,
+          userEmail: currentUser?.Email || 'system',
         }),
       }).catch(err => console.warn('Background Drive upload task queued:', err.message));
     }
@@ -446,8 +618,8 @@ export const HealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         action: 'createEpisode',
-        role: currentUser.Role,
-        userEmail: currentUser.Email,
+        role: currentUser?.Role || 'Patient',
+        userEmail: currentUser?.Email || 'patient@system',
         data: {
           episode: newEpisode,
           labs: newLabs,
@@ -502,7 +674,7 @@ export const HealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       Action_Type: act.actionType,
       Details: act.details,
       Action_DateTime: now,
-      Performed_By: currentPharmacist ? currentPharmacist.Full_Name : currentUser.Full_Name,
+      Performed_By: currentPharmacist ? currentPharmacist.Full_Name : (currentUser ? currentUser.Full_Name : 'เภสัชกรผู้ประเมิน'),
     }));
 
     // Data Sources
@@ -557,8 +729,8 @@ export const HealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         action: 'createAssessment',
-        role: currentUser.Role,
-        userEmail: currentUser.Email,
+        role: currentUser?.Role || 'Pharmacist',
+        userEmail: currentUser?.Email || 'pharmacist@system',
         data: {
           assessment: newAssessment,
           meds: newMeds,
@@ -594,8 +766,8 @@ export const HealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         action: 'submitFeedback',
-        role: currentUser.Role,
-        userEmail: currentUser.Email,
+        role: currentUser?.Role || 'Patient',
+        userEmail: currentUser?.Email || 'patient@system',
         data: {
           feedback: newFeedback,
         },
@@ -717,6 +889,11 @@ export const HealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         currentUser,
         currentPatient,
         currentPharmacist,
+        isAuthenticated: Boolean(currentUser),
+        login,
+        register,
+        logout,
+        quickLoginAs,
         switchUser,
         quickSwitchRole,
 

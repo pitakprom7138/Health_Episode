@@ -273,7 +273,7 @@ export const CreateEpisodeModal: React.FC<CreateEpisodeModalProps> = ({
             <div>
               <h2 className="text-lg font-bold">สร้าง Health Episode ใหม่</h2>
               <p className="text-xs text-emerald-200">
-                ผู้ป่วย: {currentPatient?.Full_Name || currentUser.Full_Name} (
+                ผู้ป่วย: {currentPatient?.Full_Name || currentUser?.Full_Name || 'ผู้ป่วย'} (
                 {currentPatient?.Citizen_ID_Or_HN || 'HN-NEW'})
               </p>
             </div>

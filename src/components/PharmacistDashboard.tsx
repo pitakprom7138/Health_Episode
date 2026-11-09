@@ -108,7 +108,7 @@ export const PharmacistDashboard: React.FC<PharmacistDashboardProps> = ({
             <div>
               <div className="flex items-center gap-2.5 flex-wrap">
                 <h1 className="text-2xl font-bold tracking-tight">
-                  {currentPharmacist?.Full_Name || currentUser.Full_Name}
+                  {currentPharmacist?.Full_Name || currentUser?.Full_Name || 'เภสัชกร'}
                 </h1>
                 <span className="px-2.5 py-0.5 rounded-full bg-emerald-800 text-emerald-200 border border-emerald-400/40 text-xs font-semibold">
                   {currentPharmacist?.License_No || 'ภ.19842 (ใบประกอบวิชาชีพเภสัชกรรม)'}

@@ -344,6 +344,34 @@ function doPost(e) {
       });
     }
 
+    if (action === 'registerUser') {
+      const user = requestData.user;
+      const userSheet = ss.getSheetByName('Users');
+      appendObjectToSheet(userSheet, user);
+
+      if (requestData.patient) {
+        const ptSheet = ss.getSheetByName('Patients');
+        appendObjectToSheet(ptSheet, requestData.patient);
+      }
+
+      if (requestData.pharmacist) {
+        const phSheet = ss.getSheetByName('Pharmacists');
+        appendObjectToSheet(phSheet, requestData.pharmacist);
+      }
+
+      writeAudit(ss, {
+        User_ID: user.User_ID,
+        User_Email: user.Email,
+        Role: user.Role,
+        Action: 'REGISTER',
+        Table_Affected: 'Users',
+        Record_ID: user.User_ID,
+        Details: 'ลงทะเบียนผู้ใช้ใหม่: ' + user.Full_Name + ' (' + user.Role + ')'
+      });
+
+      return createJsonResponse({ status: 'success', message: 'User registered', userId: user.User_ID });
+    }
+
     return createJsonResponse({ status: 'error', message: 'Unknown POST action: ' + action }, 400);
   } catch (err) {
     return createJsonResponse({ status: 'error', message: err.toString() }, 500);

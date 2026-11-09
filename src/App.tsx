@@ -1,15 +1,15 @@
 /**
  * Health Episode Record System
- * ระบบบันทึกประวัติการเจ็บป่วยและการให้คำปรึกษาด้านสุขภาพโดยเภสัชกร
+ * Personal Pharmacist–Led Digital Primary Care
  * Google Sheet ID: 1hRAW8P6_zWD-pGDxXohn7kOisp_QQlm8dsA8N8iFGiE
  * Google Drive Folder: 16NAYAa6rlefbnTlIObqgdIePdG0207Dn
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { HealthProvider, useHealthSystem } from './context/HealthSystemContext';
 import { EmergencyBanner } from './components/EmergencyBanner';
 import { Navbar } from './components/Navbar';
-import { HomeOverview } from './components/HomeOverview';
+import { AuthView } from './components/AuthView';
 import { PatientDashboard } from './components/PatientDashboard';
 import { PharmacistDashboard } from './components/PharmacistDashboard';
 import { AdminDashboard } from './components/AdminDashboard';
@@ -22,10 +22,21 @@ import { HealthEpisode, Patient, ClinicalAssessment } from './types/healthSystem
 import { Activity } from 'lucide-react';
 
 const MainApp: React.FC = () => {
-  const { quickSwitchRole } = useHealthSystem();
+  const { currentUser } = useHealthSystem();
 
-  // Tab State: 'home' | 'patient' | 'pharmacist' | 'admin'
-  const [currentTab, setCurrentTab] = useState<string>('home');
+  // Tab State: 'patient' | 'pharmacist' | 'admin'
+  const [currentTab, setCurrentTab] = useState<string>(() => {
+    if (currentUser?.Role === 'Pharmacist') return 'pharmacist';
+    if (currentUser?.Role === 'Admin') return 'admin';
+    return 'patient';
+  });
+
+  // Keep currentTab synchronized when user logs in with a specific role
+  useEffect(() => {
+    if (currentUser?.Role === 'Patient') setCurrentTab('patient');
+    else if (currentUser?.Role === 'Pharmacist') setCurrentTab('pharmacist');
+    else if (currentUser?.Role === 'Admin') setCurrentTab('admin');
+  }, [currentUser?.Role]);
 
   // Modals
   const [isCreateEpisodeOpen, setIsCreateEpisodeOpen] = useState(false);
@@ -71,12 +82,13 @@ const MainApp: React.FC = () => {
       {/* 1. Emergency Red-Flag Banner */}
       <EmergencyBanner />
 
-      {/* 2. Main Navigation Bar */}
+      {/* 2. Main Navigation Bar (Strictly Role-Based) */}
       <Navbar
         currentTab={currentTab}
         setCurrentTab={setCurrentTab}
         openErModal={() => setIsErModalOpen(true)}
         openProfileModal={() => setIsProfileModalOpen(true)}
+        openCreateEpisodeModal={() => setIsCreateEpisodeOpen(true)}
       />
 
       {/* Toast Notification */}
@@ -89,37 +101,32 @@ const MainApp: React.FC = () => {
 
       {/* 3. Main Content Container */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 flex-1 w-full">
-        {currentTab === 'home' && (
-          <HomeOverview
-            onSelectRole={role => {
-              quickSwitchRole(role);
-              if (role === 'Patient') setCurrentTab('patient');
-              else if (role === 'Pharmacist') setCurrentTab('pharmacist');
-              else if (role === 'Admin') setCurrentTab('admin');
-            }}
-            onOpenErModal={() => setIsErModalOpen(true)}
-            onOpenCreateEpisode={() => setIsCreateEpisodeOpen(true)}
-          />
+        {/* If NOT logged in, show AuthView (Login & Register) */}
+        {!currentUser && (
+          <AuthView onSuccessLogin={() => showToast('เข้าสู่ระบบสำเร็จ ยินดีต้อนรับครับ/ค่ะ')} />
         )}
 
-        {currentTab === 'patient' && (
+        {/* If LOGGED IN AS PATIENT */}
+        {currentUser?.Role === 'Patient' && (
           <PatientDashboard
             onOpenCreateEpisode={() => setIsCreateEpisodeOpen(true)}
             onOpenFeedback={as => handleOpenFeedback(as)}
           />
         )}
 
-        {currentTab === 'pharmacist' && (
+        {/* If LOGGED IN AS PHARMACIST */}
+        {currentUser?.Role === 'Pharmacist' && (
           <PharmacistDashboard
             onOpenAssessment={(ep, pt) => handleOpenAssessment(ep, pt)}
           />
         )}
 
-        {currentTab === 'admin' && <AdminDashboard />}
+        {/* If LOGGED IN AS ADMIN */}
+        {currentUser?.Role === 'Admin' && <AdminDashboard />}
       </main>
 
       {/* 4. Modals */}
-      {/* Create Episode Modal */}
+      {/* Create Episode Modal (Patient Only) */}
       <CreateEpisodeModal
         isOpen={isCreateEpisodeOpen}
         onClose={() => setIsCreateEpisodeOpen(false)}
@@ -130,7 +137,7 @@ const MainApp: React.FC = () => {
         }}
       />
 
-      {/* Clinical Assessment Modal */}
+      {/* Clinical Assessment Modal (Pharmacist Only) */}
       {assessmentModalData.isOpen && assessmentModalData.episode && assessmentModalData.patient && (
         <AssessmentModal
           isOpen={assessmentModalData.isOpen}
@@ -144,7 +151,7 @@ const MainApp: React.FC = () => {
         />
       )}
 
-      {/* Patient Feedback Modal */}
+      {/* Patient Feedback Modal (Patient Only) */}
       {feedbackModalData.isOpen && feedbackModalData.assessment && (
         <PatientFeedbackModal
           isOpen={feedbackModalData.isOpen}

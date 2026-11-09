@@ -89,7 +89,7 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
             <div>
               <div className="flex items-center gap-2.5 flex-wrap">
                 <h1 className="text-2xl font-bold tracking-tight">
-                  {currentPatient?.Full_Name || currentUser.Full_Name}
+                  {currentPatient?.Full_Name || currentUser?.Full_Name || 'ผู้ป่วย'}
                 </h1>
                 <span className="px-2.5 py-0.5 rounded-full bg-emerald-900/60 text-emerald-200 border border-emerald-500/30 text-xs font-semibold">
                   {currentPatient?.Citizen_ID_Or_HN || 'HN-670124'}
