@@ -9,10 +9,6 @@ import {
   PlusCircle,
   FileText,
   UserCheck,
-  FileSpreadsheet,
-  RefreshCw,
-  CheckCircle2,
-  Sparkles,
 } from 'lucide-react';
 import { useHealthSystem } from '../context/HealthSystemContext';
 
@@ -33,12 +29,8 @@ export const Navbar: React.FC<NavbarProps> = ({
 }) => {
   const {
     currentUser,
-    currentPatient,
     currentPharmacist,
     logout,
-    gasWebAppUrl,
-    isSavingRealtime,
-    lastSyncTime,
   } = useHealthSystem();
 
   return (
@@ -171,38 +163,6 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* User Account Info & Logout */}
           <div className="flex items-center gap-2">
-            {/* Real-time Google Sheet sync status button */}
-            <button
-              onClick={openErModal}
-              className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer border ${
-                gasWebAppUrl
-                  ? isSavingRealtime
-                    ? 'bg-amber-50 border-amber-300 text-amber-900 animate-pulse'
-                    : 'bg-emerald-50 border-emerald-300 text-emerald-800 hover:bg-emerald-100'
-                  : 'bg-amber-100/80 border-amber-300 text-amber-900 hover:bg-amber-200/80'
-              }`}
-              title={gasWebAppUrl ? 'Google Sheet ซิงค์แบบเรียลไทม์ (คลิกเพื่อดูหรือตั้งค่า)' : 'คลิกเพื่อตั้งค่าเชื่อมต่อ Google Sheet'}
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
-              <span
-                className={`w-2 h-2 rounded-full shrink-0 ${
-                  gasWebAppUrl
-                    ? isSavingRealtime
-                      ? 'bg-amber-500 animate-ping'
-                      : 'bg-emerald-500'
-                    : 'bg-amber-500 animate-pulse'
-                }`}
-              />
-              <span className="hidden md:inline font-sans text-[11px]">
-                {gasWebAppUrl
-                  ? isSavingRealtime
-                    ? 'กำลังบันทึกลงชีท...'
-                    : lastSyncTime
-                    ? `ซิงค์ชีท ${lastSyncTime}`
-                    : 'Google Sheet เรียลไทม์'
-                  : 'เชื่อมต่อ Google Sheet'}
-              </span>
-            </button>
 
             {currentUser ? (
               <div className="flex items-center gap-2 sm:gap-3 bg-slate-50 border border-slate-200 py-1 px-2 sm:px-3 rounded-2xl">
@@ -260,34 +220,6 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
         </div>
 
-        {/* Real-time notification banner if Google Apps Script URL is not set yet */}
-        {!gasWebAppUrl && (
-          <div className="bg-amber-50 border-t border-amber-200 px-4 py-2 text-xs text-amber-950 flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <FileSpreadsheet className="w-4 h-4 text-emerald-700 shrink-0" />
-              <span>
-                <strong>ตั้งค่าเรียลไทม์:</strong> เพื่อให้ข้อมูลที่กรอกในเว็บ บันทึกลงใน Google Sheet ID: <code className="bg-amber-100 px-1 py-0.5 rounded font-mono font-bold">1hRAW8P6...</code> อัตโนมัติแบบเรียลไทม์
-              </span>
-            </div>
-            <button
-              onClick={openErModal}
-              className="px-3 py-1 bg-emerald-800 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold transition shrink-0 cursor-pointer shadow-xs"
-            >
-              ตั้งค่า Web App URL ทันที
-            </button>
-          </div>
-        )}
-
-        {/* Real-time saving floating toast */}
-        {isSavingRealtime && (
-          <div className="fixed bottom-5 right-5 z-50 bg-emerald-950 text-white px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-3 text-xs font-bold border border-emerald-600 animate-in fade-in slide-in-from-bottom-3">
-            <RefreshCw className="w-4 h-4 animate-spin text-emerald-400 shrink-0" />
-            <div>
-              <div>กำลังบันทึกข้อมูลลง Google Sheet...</div>
-              <div className="text-[10px] text-emerald-300 font-normal">อัปเดตอัตโนมัติแบบเรียลไทม์</div>
-            </div>
-          </div>
-        )}
 
         {/* Mobile Navigation bar (Strictly Role-Based) */}
         {currentUser && (
