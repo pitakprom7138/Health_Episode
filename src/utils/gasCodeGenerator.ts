@@ -347,9 +347,10 @@ function doPost(e) {
       updateRecordStatus(ss, 'Health_Episodes', 'Episode_ID', assessment.Episode_ID, 'Status', 'Assessed');
 
       // บันทึกยาที่แนะนำ (Episode_Medications)
-      if (requestData.medications && requestData.medications.length > 0) {
+      const medsToSave = requestData.medications || requestData.meds || [];
+      if (medsToSave && medsToSave.length > 0) {
         const emSheet = ss.getSheetByName('Episode_Medications');
-        requestData.medications.forEach(function(med) {
+        medsToSave.forEach(function(med) {
           appendObjectToSheet(emSheet, med);
         });
         // ปรับปรุงยอดคำนวณ Drug_Usage_Summary อัตโนมัติ
@@ -465,6 +466,69 @@ function doPost(e) {
       });
 
       return createJsonResponse({ status: 'success', message: 'User registered', userId: user.User_ID });
+    }
+
+    if (action === 'addPatientMedication') {
+      const med = requestData.medication || requestData.data || requestData;
+      const pmSheet = ss.getSheetByName('Patient_Medications');
+      appendObjectToSheet(pmSheet, med);
+      writeAudit(ss, {
+        User_ID: med.Patient_ID || userEmail,
+        User_Email: userEmail,
+        Role: userRole,
+        Action: 'UPDATE_EPISODE',
+        Table_Affected: 'Patient_Medications',
+        Record_ID: med.ID,
+        Details: 'เพิ่มยาประจำตัว: ' + med.Drug_Name
+      });
+      return createJsonResponse({ status: 'success', message: 'Patient medication added' });
+    }
+
+    if (action === 'updatePatientProfile') {
+      const pt = requestData.patient || requestData.data;
+      const ptSheet = ss.getSheetByName('Patients');
+      const data = ptSheet.getDataRange().getValues();
+      const headers = data[0];
+      const idColIdx = headers.indexOf('Patient_ID');
+      if (idColIdx !== -1) {
+        for (var i = 1; i < data.length; i++) {
+          if (String(data[i][idColIdx]) === String(pt.Patient_ID)) {
+            var rowToSet = headers.map(function(h) {
+              var v = pt[h];
+              if (Array.isArray(v)) return v.join(', ');
+              return v !== undefined && v !== null ? v : data[i][headers.indexOf(h)];
+            });
+            ptSheet.getRange(i + 1, 1, 1, headers.length).setValues([rowToSet]);
+            break;
+          }
+        }
+      }
+      writeAudit(ss, {
+        User_ID: pt.Patient_ID,
+        User_Email: userEmail,
+        Role: userRole,
+        Action: 'UPDATE_USER',
+        Table_Affected: 'Patients',
+        Record_ID: pt.Patient_ID,
+        Details: 'อัปเดตข้อมูลผู้ป่วยและประวัติแพ้ยา'
+      });
+      return createJsonResponse({ status: 'success', message: 'Patient profile updated' });
+    }
+
+    if (action === 'addMedicationCatalogItem') {
+      const item = requestData.item || requestData.data;
+      const catSheet = ss.getSheetByName('Medication_Catalog');
+      appendObjectToSheet(catSheet, item);
+      writeAudit(ss, {
+        User_ID: userEmail,
+        User_Email: userEmail,
+        Role: userRole,
+        Action: 'CREATE_EPISODE',
+        Table_Affected: 'Medication_Catalog',
+        Record_ID: item.Med_ID,
+        Details: 'เพิ่มยาใหม่ใน Catalog: ' + item.Generic_Name
+      });
+      return createJsonResponse({ status: 'success', message: 'Catalog item added' });
     }
 
     if (action === 'setupSheets') {
@@ -588,9 +652,16 @@ function getSheetDataAsObjects(ss, sheetName) {
  * Helper: เพิ่ม Object ลงใน Sheet ตาม Header
  */
 function appendObjectToSheet(sheet, obj) {
-  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  if (!sheet) return;
+  const lastCol = sheet.getLastColumn();
+  if (lastCol < 1) return;
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
   const row = headers.map(function(header) {
-    return obj[header] !== undefined ? obj[header] : '';
+    var val = obj[header];
+    if (Array.isArray(val)) {
+      return val.join(', ');
+    }
+    return val !== undefined && val !== null ? val : '';
   });
   sheet.appendRow(row);
 }

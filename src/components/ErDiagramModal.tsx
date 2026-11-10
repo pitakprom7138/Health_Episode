@@ -72,13 +72,33 @@ export const ErDiagramModal: React.FC<ErDiagramModalProps> = ({ isOpen, onClose 
     }
   };
 
-  const handleSaveUrl = () => {
-    setGasWebAppUrl(urlInput);
+  const handleSaveUrl = async () => {
+    const trimmed = urlInput.trim();
+    if (trimmed.includes('docs.google.com/spreadsheets')) {
+      setSetupFeedback({
+        type: 'error',
+        text: 'URL ที่ระบุคือลิงก์ Google Sheet ไม่ใช่ Web App URL กรุณา Deploy เป็น Web app ใน Apps Script แล้วนำ URL ที่ลงท้ายด้วย /exec มากรอก',
+      });
+      return;
+    }
+
+    setGasWebAppUrl(trimmed);
     setSetupFeedback({
       type: 'success',
-      text: 'บันทึก URL ของ Google Apps Script Web App เรียบร้อยแล้ว',
+      text: 'บันทึก URL สำเร็จ! ระบบกำลังทดสอบเชื่อมต่อ Real-time...',
     });
-    setTimeout(() => setSetupFeedback(null), 3000);
+
+    if (trimmed) {
+      try {
+        const res = await syncWithGas();
+        if (res.success) {
+          setSetupFeedback({
+            type: 'success',
+            text: 'เชื่อมต่อ Google Apps Script สำเร็จ และเปิดใช้งานการบันทึกข้อมูลเรียลไทม์เรียบร้อยแล้ว!',
+          });
+        }
+      } catch {}
+    }
   };
 
   const handleRunSetup = async () => {

@@ -88,7 +88,8 @@ function geminiApiPlugin(): Plugin {
                 payload.action,
                 payload.data,
                 payload.userEmail || 'system',
-                payload.role || 'Patient'
+                payload.role || 'Patient',
+                payload.gasUrl
               );
               res.setHeader('Content-Type', 'application/json');
               res.statusCode = 200;

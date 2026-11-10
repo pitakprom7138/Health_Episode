@@ -74,6 +74,8 @@ interface HealthContextType {
   gasWebAppUrl: string;
   setGasWebAppUrl: (url: string) => void;
   isGasSyncing: boolean;
+  isSavingRealtime: boolean;
+  lastSyncTime: string | null;
   syncWithGas: () => Promise<{ success: boolean; message: string }>;
   triggerSetupSheets: () => Promise<{ success: boolean; message: string }>;
 
@@ -199,6 +201,10 @@ export const HealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     return localStorage.getItem(`${STORAGE_KEY}_gasUrl`) || '';
   });
 
+  const [isGasSyncing, setIsGasSyncing] = useState(false);
+  const [isSavingRealtime, setIsSavingRealtime] = useState(false);
+  const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
+
   const setGasWebAppUrl = (url: string) => {
     const trimmed = url.trim();
     setGasWebAppUrlState(trimmed);
@@ -210,7 +216,63 @@ export const HealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     }).catch(() => {});
   };
 
-  const [isGasSyncing, setIsGasSyncing] = useState(false);
+  // Sync saved Web App URL to server proxy on startup
+  useEffect(() => {
+    if (gasWebAppUrl) {
+      fetch('/api/sheets/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gasUrl: gasWebAppUrl }),
+      }).catch(() => {});
+    }
+  }, [gasWebAppUrl]);
+
+  // Real-time synchronization helper for instant writing to Google Sheet
+  const saveToGoogleSheetRealtime = (action: string, data: any, role?: string, userEmail?: string) => {
+    const currentUrl = gasWebAppUrl || localStorage.getItem(`${STORAGE_KEY}_gasUrl`) || '';
+    setIsSavingRealtime(true);
+
+    // 1. Send via local server proxy (handles redirects and server-to-server connection)
+    fetch('/api/sheets/save-record', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action,
+        role: role || currentUser?.Role || 'Patient',
+        userEmail: userEmail || currentUser?.Email || 'system',
+        gasUrl: currentUrl,
+        data,
+      }),
+    })
+      .then(() => {
+        setLastSyncTime(new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+        setTimeout(() => setIsSavingRealtime(false), 1500);
+      })
+      .catch(err => {
+        console.warn('Server proxy sheet save:', err.message);
+        setIsSavingRealtime(false);
+      });
+
+    // 2. Direct browser-to-GAS Web App POST (no-cors mode triggers doPost in Google Apps Script immediately!)
+    if (currentUrl && currentUrl.startsWith('http') && !currentUrl.includes('docs.google.com/spreadsheets')) {
+      try {
+        fetch(currentUrl, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            action,
+            role: role || currentUser?.Role || 'Patient',
+            userEmail: userEmail || currentUser?.Email || 'system',
+            spreadsheetId: SPREADSHEET_ID,
+            ...data,
+          }),
+        }).catch(err => console.warn('Direct GAS POST:', err.message));
+      } catch (e: any) {
+        console.warn('Direct GAS POST error:', e.message);
+      }
+    }
+  };
 
   // Sync to LocalStorage
   useEffect(() => {
@@ -435,19 +497,15 @@ export const HealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       addAuditLog('REGISTER', 'Users', newUserId, `ผู้ป่วยลงทะเบียนบัญชีใหม่: ${params.fullName}`);
 
       // Save to Google Sheets backend
-      fetch('/api/sheets/save-record', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'registerUser',
-          role: 'Patient',
-          userEmail: cleanEmail,
-          data: {
-            user: newUser,
-            patient: newPatient,
-          },
-        }),
-      }).catch(err => console.warn('Background Sheets user register save:', err.message));
+      saveToGoogleSheetRealtime(
+        'registerUser',
+        {
+          user: newUser,
+          patient: newPatient,
+        },
+        'Patient',
+        cleanEmail
+      );
 
       return { success: true, message: 'สมัครสมาชิกสำเร็จ และเข้าสู่ระบบเรียบร้อย', user: newUser };
     } else {
@@ -485,19 +543,15 @@ export const HealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       addAuditLog('REGISTER', 'Users', newUserId, `เภสัชกรลงทะเบียนบัญชีใหม่: ${params.fullName} (${params.licenseNo})`);
 
       // Save to Google Sheets backend
-      fetch('/api/sheets/save-record', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'registerUser',
-          role: 'Pharmacist',
-          userEmail: cleanEmail,
-          data: {
-            user: newUser,
-            pharmacist: newPharmacist,
-          },
-        }),
-      }).catch(err => console.warn('Background Sheets pharmacist register save:', err.message));
+      saveToGoogleSheetRealtime(
+        'registerUser',
+        {
+          user: newUser,
+          pharmacist: newPharmacist,
+        },
+        'Pharmacist',
+        cleanEmail
+      );
 
       return { success: true, message: 'สมัครสมาชิกเภสัชกรสำเร็จ และเข้าสู่ระบบเรียบร้อย', user: newUser };
     }
@@ -560,7 +614,7 @@ export const HealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     setAttachments(prev => [newAttachment, ...prev]);
     addAuditLog('UPLOAD_FILE', 'Attachments', newAttachmentId, `บันทึกไฟล์ ${file.name} เข้าสู่คลังเอกสารสุขภาพของระบบ`);
 
-    // Asynchronously send to Google Drive backend proxy
+    // Asynchronously send to Google Drive backend and Sheet Attachments table
     if (file.dataUrl && file.dataUrl.includes('base64,')) {
       const base64Data = file.dataUrl.split('base64,')[1];
       fetch('/api/drive/upload', {
@@ -575,6 +629,22 @@ export const HealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           userEmail: currentUser?.Email || 'system',
         }),
       }).catch(err => console.warn('Background Drive upload task queued:', err.message));
+
+      saveToGoogleSheetRealtime(
+        'uploadFileToDrive',
+        {
+          fileData: {
+            name: file.name,
+            type: file.type,
+            base64: base64Data,
+            recordType,
+            recordId,
+            folderId: DRIVE_FOLDER_ID,
+          },
+        },
+        currentUser?.Role || 'Patient',
+        currentUser?.Email || 'system'
+      );
     }
 
     return newAttachment;
@@ -624,20 +694,16 @@ export const HealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       `สร้างเหตุการณ์เจ็บป่วยใหม่: ${episodeData.Chief_Complaint} (ฉุกเฉิน: ${episodeData.Has_Emergency_Flags ? 'ใช่' : 'ไม่ใช่'})`
     );
 
-    // Asynchronously send to Google Sheets backend
-    fetch('/api/sheets/save-record', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'createEpisode',
-        role: currentUser?.Role || 'Patient',
-        userEmail: currentUser?.Email || 'patient@system',
-        data: {
-          episode: newEpisode,
-          labs: newLabs,
-        },
-      }),
-    }).catch(err => console.warn('Background Sheets save task queued:', err.message));
+    // Save to Google Sheets in real-time
+    saveToGoogleSheetRealtime(
+      'createEpisode',
+      {
+        episode: newEpisode,
+        labs: newLabs,
+      },
+      currentUser?.Role || 'Patient',
+      currentUser?.Email || 'patient@system'
+    );
 
     return newEpId;
   };
@@ -735,23 +801,20 @@ export const HealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       `บันทึกผลการประเมินทางคลินิก: ${assessmentData.Problem_Type} (จ่ายยา ${newMeds.length} รายการ)`
     );
 
-    // Asynchronously send assessment data to Google Sheets backend
-    fetch('/api/sheets/save-record', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'createAssessment',
-        role: currentUser?.Role || 'Pharmacist',
-        userEmail: currentUser?.Email || 'pharmacist@system',
-        data: {
-          assessment: newAssessment,
-          meds: newMeds,
-          actions: newActions,
-          sources: newSources,
-          followup: newFollowup,
-        },
-      }),
-    }).catch(err => console.warn('Background Sheets assessment save task queued:', err.message));
+    // Save assessment data to Google Sheets backend in real-time
+    saveToGoogleSheetRealtime(
+      'createAssessment',
+      {
+        assessment: newAssessment,
+        medications: newMeds,
+        meds: newMeds,
+        actions: newActions,
+        sources: newSources,
+        followup: newFollowup,
+      },
+      currentUser?.Role || 'Pharmacist',
+      currentUser?.Email || 'pharmacist@system'
+    );
 
     return newAsId;
   };
@@ -772,19 +835,15 @@ export const HealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       `ผู้ป่วยประเมินผลลัพธ์: ${feedbackData.Outcome_Status} (${feedbackData.Satisfaction_Score} ดาว)`
     );
 
-    // Asynchronously send feedback data to Google Sheets backend
-    fetch('/api/sheets/save-record', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'submitFeedback',
-        role: currentUser?.Role || 'Patient',
-        userEmail: currentUser?.Email || 'patient@system',
-        data: {
-          feedback: newFeedback,
-        },
-      }),
-    }).catch(err => console.warn('Background Sheets feedback save task queued:', err.message));
+    // Save feedback to Google Sheets backend in real-time
+    saveToGoogleSheetRealtime(
+      'submitFeedback',
+      {
+        feedback: newFeedback,
+      },
+      currentUser?.Role || 'Patient',
+      currentUser?.Email || 'patient@system'
+    );
   };
 
   // Add Patient Medication
@@ -796,18 +855,48 @@ export const HealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     };
     setPatientMedications(prev => [newMed, ...prev]);
     addAuditLog('UPDATE_EPISODE', 'Patient_Medications', newMed.ID, `เพิ่มยาประจำตัว: ${medData.Drug_Name}`);
+
+    // Save to Google Sheets in real-time
+    saveToGoogleSheetRealtime(
+      'addPatientMedication',
+      {
+        medication: newMed,
+      },
+      currentUser?.Role || 'Patient',
+      currentUser?.Email || 'patient@system'
+    );
   };
 
   // Update Patient Profile
   const updatePatientProfile = (updated: Patient) => {
     setPatients(prev => prev.map(p => (p.Patient_ID === updated.Patient_ID ? updated : p)));
     addAuditLog('UPDATE_USER', 'Patients', updated.Patient_ID, `ปรับปรุงข้อมูลส่วนบุคคลและประวัติแพ้ยา`);
+
+    // Save to Google Sheets in real-time
+    saveToGoogleSheetRealtime(
+      'updatePatientProfile',
+      {
+        patient: updated,
+      },
+      currentUser?.Role || 'Patient',
+      currentUser?.Email || 'patient@system'
+    );
   };
 
   // Add Catalog Item
   const addMedicationCatalogItem = (item: MedicationCatalogItem) => {
     setMedicationCatalog(prev => [item, ...prev]);
     addAuditLog('CREATE_EPISODE', 'Medication_Catalog', item.Med_ID, `เพิ่มยาใหม่ใน Catalog: ${item.Generic_Name}`);
+
+    // Save to Google Sheets in real-time
+    saveToGoogleSheetRealtime(
+      'addMedicationCatalogItem',
+      {
+        item,
+      },
+      currentUser?.Role || 'Admin',
+      currentUser?.Email || 'admin@system'
+    );
   };
 
   // Update User Status
@@ -1023,6 +1112,8 @@ export const HealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         gasWebAppUrl,
         setGasWebAppUrl,
         isGasSyncing,
+        isSavingRealtime,
+        lastSyncTime,
         syncWithGas,
         triggerSetupSheets,
 

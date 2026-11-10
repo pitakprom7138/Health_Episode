@@ -94,12 +94,14 @@ export async function uploadToGoogleDrive(payload: AttachmentUploadPayload) {
 /**
  * Appends record into Google Sheet 1hRAW8P6_zWD-pGDxXohn7kOisp_QQlm8dsA8N8iFGiE
  */
-export async function appendToGoogleSheet(action: string, data: any, userEmail: string, role: string) {
-  if (gasEndpointUrl) {
+export async function appendToGoogleSheet(action: string, data: any, userEmail: string, role: string, explicitGasUrl?: string) {
+  const targetUrl = explicitGasUrl || gasEndpointUrl;
+  if (targetUrl) {
     try {
-      const response = await fetch(gasEndpointUrl, {
+      const response = await fetch(targetUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        redirect: 'follow',
         body: JSON.stringify({
           action,
           role,
@@ -108,16 +110,22 @@ export async function appendToGoogleSheet(action: string, data: any, userEmail: 
           ...data,
         }),
       });
-      const result = await response.json();
-      return result;
+      const text = await response.text();
+      try {
+        const result = JSON.parse(text);
+        return result;
+      } catch {
+        return { status: 'success', raw: text };
+      }
     } catch (err: any) {
       console.warn(`GAS append failed for ${action}:`, err.message);
+      return { status: 'error', message: err.message };
     }
   }
 
   return {
     status: 'success',
-    message: 'บันทึกข้อมูลลงในระบบฐานข้อมูลเวชระเบียนเรียบร้อยแล้ว',
+    message: 'บันทึกข้อมูลในเครื่องเรียบร้อยแล้ว (ยังไม่ได้ระบุ Web App URL)',
   };
 }
 
