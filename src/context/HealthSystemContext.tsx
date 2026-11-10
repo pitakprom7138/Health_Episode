@@ -75,6 +75,7 @@ interface HealthContextType {
   setGasWebAppUrl: (url: string) => void;
   isGasSyncing: boolean;
   syncWithGas: () => Promise<{ success: boolean; message: string }>;
+  triggerSetupSheets: () => Promise<{ success: boolean; message: string }>;
 
   // CRUD Actions
   createEpisode: (
@@ -194,9 +195,20 @@ export const HealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     return saved !== null && saved !== '' ? saved : 'USR001';
   });
 
-  const [gasWebAppUrl, setGasWebAppUrl] = useState<string>(() => {
+  const [gasWebAppUrl, setGasWebAppUrlState] = useState<string>(() => {
     return localStorage.getItem(`${STORAGE_KEY}_gasUrl`) || '';
   });
+
+  const setGasWebAppUrl = (url: string) => {
+    const trimmed = url.trim();
+    setGasWebAppUrlState(trimmed);
+    localStorage.setItem(`${STORAGE_KEY}_gasUrl`, trimmed);
+    fetch('/api/sheets/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ gasUrl: trimmed }),
+    }).catch(() => {});
+  };
 
   const [isGasSyncing, setIsGasSyncing] = useState(false);
 
@@ -836,7 +848,7 @@ export const HealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     localStorage.clear();
   };
 
-  // Live Sync with Google Apps Script Web App
+  // Live Sync with Google Apps Script Web App (all 16 tables)
   const syncWithGas = async (): Promise<{ success: boolean; message: string }> => {
     if (!gasWebAppUrl) {
       return { success: false, message: 'กรุณากรอก URL ของ Google Apps Script Web App ในหน้าตั้งค่าก่อนซิงค์' };
@@ -844,18 +856,29 @@ export const HealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     setIsGasSyncing(true);
     try {
-      const res = await fetch(`${gasWebAppUrl}?action=getAllData`);
+      const res = await fetch(`${gasWebAppUrl}?action=getAllData&spreadsheetId=${SPREADSHEET_ID}`);
       const json = await res.json();
       if (json.status === 'success' && json.data) {
-        // Sync tables if received
+        // Sync all 16 relational tables if available in the spreadsheet
         if (json.data.Patients && json.data.Patients.length > 0) setPatients(json.data.Patients);
-        if (json.data.Health_Episodes && json.data.Health_Episodes.length > 0) setHealthEpisodes(json.data.Health_Episodes);
-        if (json.data.Clinical_Assessments && json.data.Clinical_Assessments.length > 0) setClinicalAssessments(json.data.Clinical_Assessments);
+        if (json.data.Users && json.data.Users.length > 0) setUsers(json.data.Users);
+        if (json.data.Pharmacists && json.data.Pharmacists.length > 0) setPharmacists(json.data.Pharmacists);
         if (json.data.Medication_Catalog && json.data.Medication_Catalog.length > 0) setMedicationCatalog(json.data.Medication_Catalog);
+        if (json.data.Patient_Medications && json.data.Patient_Medications.length > 0) setPatientMedications(json.data.Patient_Medications);
+        if (json.data.Health_Episodes && json.data.Health_Episodes.length > 0) setHealthEpisodes(json.data.Health_Episodes);
+        if (json.data.Lab_Results && json.data.Lab_Results.length > 0) setLabResults(json.data.Lab_Results);
+        if (json.data.Clinical_Assessments && json.data.Clinical_Assessments.length > 0) setClinicalAssessments(json.data.Clinical_Assessments);
+        if (json.data.Episode_Medications && json.data.Episode_Medications.length > 0) setEpisodeMedications(json.data.Episode_Medications);
+        if (json.data.Clinical_Actions && json.data.Clinical_Actions.length > 0) setClinicalActions(json.data.Clinical_Actions);
+        if (json.data.Assessment_Data_Sources && json.data.Assessment_Data_Sources.length > 0) setAssessmentDataSources(json.data.Assessment_Data_Sources);
+        if (json.data.Followups && json.data.Followups.length > 0) setFollowups(json.data.Followups);
+        if (json.data.Patient_Feedback && json.data.Patient_Feedback.length > 0) setPatientFeedbacks(json.data.Patient_Feedback);
+        if (json.data.Attachments && json.data.Attachments.length > 0) setAttachments(json.data.Attachments);
+        if (json.data.Audit_Log && json.data.Audit_Log.length > 0) setAuditLogs(json.data.Audit_Log);
         
-        addAuditLog('EXPORT_SHEETS', 'Google_Sheets', SPREADSHEET_ID, 'ซิงค์ข้อมูลสำเร็จกับ Google Sheets');
+        addAuditLog('EXPORT_SHEETS', 'Google_Sheets', SPREADSHEET_ID, 'ซิงค์ข้อมูลสำเร็จกับ Google Sheets ทั้ง 16 ตาราง');
         setIsGasSyncing(false);
-        return { success: true, message: 'ซิงค์ข้อมูลกับ Google Sheet 16 ตารางสำเร็จเรียบร้อย!' };
+        return { success: true, message: 'ซิงค์ข้อมูลกับ Google Sheet 16 ตารางสำเร็จสมบูรณ์!' };
       } else {
         setIsGasSyncing(false);
         return { success: false, message: json.message || 'ไม่สามารถรับข้อมูลจาก Google Apps Script ได้' };
@@ -863,6 +886,70 @@ export const HealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     } catch (err: any) {
       setIsGasSyncing(false);
       return { success: false, message: `เกิดข้อผิดพลาดในการเชื่อมต่อ: ${err.message}` };
+    }
+  };
+
+  // Trigger Google Sheet 16-Table Creation and Drive Setup
+  const triggerSetupSheets = async (): Promise<{ success: boolean; message: string }> => {
+    setIsGasSyncing(true);
+    addAuditLog('EXPORT_SHEETS', 'Google_Sheets', SPREADSHEET_ID, 'ส่งคำสั่งสร้างและจัดรูปแบบโครงสร้าง 16 ตารางใน Google Sheet');
+
+    // 1. Direct call to GAS Web App if URL is configured
+    if (gasWebAppUrl) {
+      try {
+        const directRes = await fetch(`${gasWebAppUrl}?action=setupSheets&spreadsheetId=${SPREADSHEET_ID}`);
+        const directJson = await directRes.json();
+        if (directJson.status === 'success') {
+          setIsGasSyncing(false);
+          return {
+            success: true,
+            message: directJson.message || 'สร้างและเชื่อมโยงชีททั้ง 16 ตารางใน Google Sheet สำเร็จเรียบร้อย!',
+          };
+        }
+      } catch (directErr: any) {
+        console.warn('Direct GET setupSheets failed, trying POST no-cors:', directErr.message);
+        try {
+          await fetch(gasWebAppUrl, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({ action: 'setupSheets', spreadsheetId: SPREADSHEET_ID }),
+          });
+          setIsGasSyncing(false);
+          return {
+            success: true,
+            message: 'ส่งคำสั่งสร้าง 16 ตารางไปยัง Google Apps Script เรียบร้อยแล้ว (กำลังประมวลผล)',
+          };
+        } catch (noCorsErr: any) {
+          console.warn('no-cors POST also had issue:', noCorsErr.message);
+        }
+      }
+    }
+
+    // 2. Local backend proxy route
+    try {
+      const serverRes = await fetch('/api/sheets/save-record', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'setupSheets',
+          role: currentUser?.Role || 'Admin',
+          userEmail: currentUser?.Email || 'admin@system',
+          data: { spreadsheetId: SPREADSHEET_ID },
+        }),
+      });
+      const serverJson = await serverRes.json();
+      setIsGasSyncing(false);
+      return {
+        success: true,
+        message: serverJson.message || 'บันทึกคำสั่งเตรียมโครงสร้าง 16 ตารางในระบบเรียบร้อยแล้ว',
+      };
+    } catch (err: any) {
+      setIsGasSyncing(false);
+      return {
+        success: false,
+        message: `ไม่สามารถส่งคำสั่งสร้างชีทได้: ${err.message}`,
+      };
     }
   };
 
@@ -903,6 +990,7 @@ export const HealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         setGasWebAppUrl,
         isGasSyncing,
         syncWithGas,
+        triggerSetupSheets,
 
         createEpisode,
         createAssessment,

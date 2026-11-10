@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ShieldCheck,
   Users,
@@ -16,9 +16,18 @@ import {
   Clock,
   Sparkles,
   Lock,
+  Copy,
+  Check,
+  RefreshCw,
+  Play,
+  Link2,
+  FolderKanban,
+  ExternalLink,
 } from 'lucide-react';
 import { useHealthSystem } from '../context/HealthSystemContext';
 import { MedicationCatalogItem, SystemUser } from '../types/healthSystem';
+import { GOOGLE_APPS_SCRIPT_CODE, SPREADSHEET_ID, DRIVE_FOLDER_ID } from '../utils/gasCodeGenerator';
+import { ER_TABLES } from '../data/erDiagramData';
 
 export const AdminDashboard: React.FC = () => {
   const {
@@ -33,12 +42,95 @@ export const AdminDashboard: React.FC = () => {
     patientFeedbacks,
     updateUserStatus,
     addMedicationCatalogItem,
+    gasWebAppUrl,
+    setGasWebAppUrl,
+    isGasSyncing,
+    syncWithGas,
+    triggerSetupSheets,
   } = useHealthSystem();
 
-  const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'USERS' | 'MEDS' | 'DRUG_SUMMARY' | 'AUDIT'>('OVERVIEW');
+  const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'USERS' | 'MEDS' | 'DRUG_SUMMARY' | 'AUDIT' | 'SHEETS_DRIVE'>('OVERVIEW');
   const [userSearch, setUserSearch] = useState('');
   const [medSearch, setMedSearch] = useState('');
   const [auditSearch, setAuditSearch] = useState('');
+
+  // GAS Setup state
+  const [copiedCode, setCopiedCode] = useState(false);
+  const [copiedSheetId, setCopiedSheetId] = useState(false);
+  const [urlInput, setUrlInput] = useState(gasWebAppUrl);
+  const [setupFeedback, setSetupFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [isExecutingSetup, setIsExecutingSetup] = useState(false);
+
+  useEffect(() => {
+    setUrlInput(gasWebAppUrl);
+  }, [gasWebAppUrl]);
+
+  const handleCopyCode = async () => {
+    try {
+      await navigator.clipboard.writeText(GOOGLE_APPS_SCRIPT_CODE);
+      setCopiedCode(true);
+      setTimeout(() => setCopiedCode(false), 3000);
+    } catch {
+      // fallback
+    }
+  };
+
+  const handleCopySheetId = async () => {
+    try {
+      await navigator.clipboard.writeText(SPREADSHEET_ID);
+      setCopiedSheetId(true);
+      setTimeout(() => setCopiedSheetId(false), 2500);
+    } catch {
+      // fallback
+    }
+  };
+
+  const handleSaveGasUrl = () => {
+    setGasWebAppUrl(urlInput);
+    setSetupFeedback({
+      type: 'success',
+      text: 'บันทึก URL ของ Google Apps Script Web App เรียบร้อยแล้ว',
+    });
+    setTimeout(() => setSetupFeedback(null), 3500);
+  };
+
+  const handleTriggerSetup = async () => {
+    setIsExecutingSetup(true);
+    setSetupFeedback(null);
+    try {
+      const res = await triggerSetupSheets();
+      setSetupFeedback({
+        type: res.success ? 'success' : 'error',
+        text: res.message,
+      });
+    } catch (err: any) {
+      setSetupFeedback({
+        type: 'error',
+        text: `เกิดข้อผิดพลาด: ${err.message}`,
+      });
+    } finally {
+      setIsExecutingSetup(false);
+    }
+  };
+
+  const handleLiveSync = async () => {
+    setIsExecutingSetup(true);
+    setSetupFeedback(null);
+    try {
+      const res = await syncWithGas();
+      setSetupFeedback({
+        type: res.success ? 'success' : 'error',
+        text: res.message,
+      });
+    } catch (err: any) {
+      setSetupFeedback({
+        type: 'error',
+        text: `เกิดข้อผิดพลาดในการซิงค์: ${err.message}`,
+      });
+    } finally {
+      setIsExecutingSetup(false);
+    }
+  };
 
   // New Med Form modal state
   const [isAddMedOpen, setIsAddMedOpen] = useState(false);
@@ -188,7 +280,44 @@ export const AdminDashboard: React.FC = () => {
           <Clock className="w-4 h-4" />
           <span>ประวัติการใช้งาน (Audit Log - {auditLogs.length})</span>
         </button>
+
+        <button
+          onClick={() => setActiveTab('SHEETS_DRIVE')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap ${
+            activeTab === 'SHEETS_DRIVE'
+              ? 'bg-slate-800 text-white shadow-xs'
+              : 'text-slate-600 hover:bg-slate-100'
+          }`}
+        >
+          <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+          <span>เชื่อมต่อชีท 16 ตาราง & Drive</span>
+        </button>
       </div>
+
+      {setupFeedback && (
+        <div
+          className={`p-4 rounded-2xl border text-xs flex items-center justify-between gap-3 animate-in fade-in ${
+            setupFeedback.type === 'success'
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+              : 'bg-rose-50 border-rose-200 text-rose-900'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {setupFeedback.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            ) : (
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+            )}
+            <span className="font-semibold">{setupFeedback.text}</span>
+          </div>
+          <button
+            onClick={() => setSetupFeedback(null)}
+            className="text-xs opacity-60 hover:opacity-100 font-bold"
+          >
+            ปิด
+          </button>
+        </div>
+      )}
 
       {/* Tab 1: Overview Analytics */}
       {activeTab === 'OVERVIEW' && (
@@ -714,6 +843,210 @@ export const AdminDashboard: React.FC = () => {
                   ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Tab 6: Google Sheets & Google Drive Integration */}
+      {activeTab === 'SHEETS_DRIVE' && (
+        <div className="space-y-6">
+          {/* Target Integration Card */}
+          <div className="bg-emerald-950 text-white rounded-3xl p-6 sm:p-8 border border-emerald-800 shadow-md">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2.5">
+                  <FileSpreadsheet className="w-6 h-6 text-emerald-400" />
+                  <h3 className="font-bold text-lg text-emerald-100">
+                    การเชื่อมต่อระบบฐานข้อมูล Google Sheets & Google Drive
+                  </h3>
+                  <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-800 text-emerald-200 border border-emerald-700 font-semibold">
+                    16 ตารางสัมพันธ์
+                  </span>
+                </div>
+                <p className="text-xs text-emerald-300/80 mt-1 max-w-2xl leading-relaxed">
+                  ระบบเวชระเบียนสารสนเทศสุขภาพปฐมภูมิดิจิทัลเชื่อมโยงข้อมูล 16 ตารางสัมพันธ์ลงใน Google Sheet
+                  และจัดเก็บไฟล์แนบทางการแพทย์ รูปภาพฉลากยา และเอกสารผลตรวจลงใน Google Drive อย่างปลอดภัย
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleCopyCode}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
+                >
+                  {copiedCode ? <Check className="w-4 h-4 text-emerald-200" /> : <Copy className="w-4 h-4" />}
+                  <span>{copiedCode ? 'คัดลอก Code.gs สำเร็จ!' : 'คัดลอกโค้ด Google Apps Script'}</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6 pt-5 border-t border-emerald-900/80 text-xs">
+              <div className="bg-emerald-900/50 p-4 rounded-2xl border border-emerald-800/80 space-y-1">
+                <div className="flex items-center justify-between text-emerald-300 text-xs font-semibold">
+                  <span className="flex items-center gap-1.5">
+                    <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+                    Target Google Sheet ID:
+                  </span>
+                  <button
+                    onClick={handleCopySheetId}
+                    className="text-[11px] text-emerald-200 hover:text-white flex items-center gap-1 underline cursor-pointer"
+                  >
+                    {copiedSheetId ? 'คัดลอกแล้ว' : 'คัดลอก ID'}
+                  </button>
+                </div>
+                <code className="text-emerald-100 font-mono text-xs font-bold break-all select-all block pt-1">
+                  {SPREADSHEET_ID}
+                </code>
+              </div>
+
+              <div className="bg-emerald-900/50 p-4 rounded-2xl border border-emerald-800/80 space-y-1">
+                <div className="flex items-center justify-between text-emerald-300 text-xs font-semibold">
+                  <span className="flex items-center gap-1.5">
+                    <FolderKanban className="w-4 h-4 text-emerald-400" />
+                    Target Google Drive Folder:
+                  </span>
+                  <a
+                    href="https://drive.google.com/drive/folders/16NAYAa6rlefbnTlIObqgdIePdG0207Dn?usp=sharing"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[11px] text-emerald-200 hover:text-white flex items-center gap-1 underline cursor-pointer"
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                    เปิดโฟลเดอร์ใน Drive
+                  </a>
+                </div>
+                <code className="text-emerald-100 font-mono text-xs font-bold break-all select-all block pt-1">
+                  {DRIVE_FOLDER_ID}
+                </code>
+              </div>
+            </div>
+          </div>
+
+          {/* Web App URL Configuration */}
+          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h4 className="font-bold text-sm text-slate-900 flex items-center gap-2">
+                  <Link2 className="w-4 h-4 text-emerald-700" />
+                  <span>Google Apps Script Web App Endpoint</span>
+                </h4>
+                <p className="text-xs text-slate-500 mt-1">
+                  กรอก Web App URL ที่ได้จากการ Deploy ใน Google Apps Script (ลงท้ายด้วย <code className="bg-slate-100 px-1 py-0.5 rounded">/exec</code>) เพื่อเปิดใช้งาน Two-way Sync
+                </p>
+              </div>
+
+              <button
+                onClick={handleSaveGasUrl}
+                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition self-start sm:self-auto cursor-pointer"
+              >
+                บันทึก URL ปลายทาง
+              </button>
+            </div>
+
+            <input
+              type="url"
+              value={urlInput}
+              onChange={e => setUrlInput(e.target.value)}
+              placeholder="https://script.google.com/macros/s/AKfycbx.../exec"
+              className="w-full px-4 py-2.5 rounded-xl border border-slate-300 text-xs font-mono focus:outline-hidden focus:ring-2 focus:ring-emerald-600 focus:border-emerald-600"
+            />
+
+            {/* Quick Action Buttons */}
+            <div className="flex flex-wrap items-center gap-3 pt-2">
+              <button
+                onClick={handleTriggerSetup}
+                disabled={isExecutingSetup || isGasSyncing}
+                className="flex items-center gap-2 px-4 py-2.5 bg-emerald-800 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
+              >
+                {isExecutingSetup || isGasSyncing ? (
+                  <RefreshCw className="w-4 h-4 animate-spin text-emerald-200" />
+                ) : (
+                  <Play className="w-4 h-4 text-emerald-300" />
+                )}
+                <span>สร้างชีท 16 ตารางและฟอร์แมตสีเขียวมรกต (#0D5C3A) ทันที</span>
+              </button>
+
+              <button
+                onClick={handleLiveSync}
+                disabled={isExecutingSetup || isGasSyncing}
+                className="flex items-center gap-2 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-800 rounded-xl text-xs font-bold transition cursor-pointer"
+              >
+                <RefreshCw className={`w-4 h-4 text-slate-600 ${isExecutingSetup || isGasSyncing ? 'animate-spin' : ''}`} />
+                <span>ซิงค์ข้อมูลกับ Google Sheet ทันที (Live Sync All Tables)</span>
+              </button>
+            </div>
+          </div>
+
+          {/* 4-Step Guide */}
+          <div className="bg-slate-50 p-6 rounded-3xl border border-slate-200 space-y-4">
+            <h4 className="font-bold text-sm text-slate-900 flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-emerald-700" />
+              <span>แนวทางดำเนินการ 4 ขั้นตอนสำหรับเชื่อมต่อ Google Sheets & Drive</span>
+            </h4>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
+              <div className="p-4 bg-white rounded-2xl border border-slate-200 space-y-2">
+                <div className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center text-xs">
+                  1
+                </div>
+                <div className="font-bold text-slate-800">เปิด Apps Script</div>
+                <p className="text-slate-600 leading-relaxed text-[11px]">
+                  เปิด Google Sheet ID <code className="bg-slate-100 px-1 py-0.5 rounded font-mono font-bold text-slate-800">{SPREADSHEET_ID}</code> ไปที่เมนู <strong>ส่วนขยาย (Extensions) &gt; Apps Script</strong>
+                </p>
+              </div>
+
+              <div className="p-4 bg-white rounded-2xl border border-slate-200 space-y-2">
+                <div className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center text-xs">
+                  2
+                </div>
+                <div className="font-bold text-slate-800">วาง Code.gs</div>
+                <p className="text-slate-600 leading-relaxed text-[11px]">
+                  กดปุ่ม <strong>&quot;คัดลอกโค้ด Google Apps Script&quot;</strong> แล้ววางทับในไฟล์ <code className="font-mono">Code.gs</code> แล้วกดบันทึก
+                </p>
+              </div>
+
+              <div className="p-4 bg-white rounded-2xl border border-slate-200 space-y-2">
+                <div className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center text-xs">
+                  3
+                </div>
+                <div className="font-bold text-slate-800">รัน setup ครั้งแรก</div>
+                <p className="text-slate-600 leading-relaxed text-[11px]">
+                  ใน Apps Script เลือกฟังก์ชัน <code className="bg-slate-100 px-1 py-0.5 rounded font-mono font-bold text-emerald-800">setupSheetsAndDrive</code> แล้วกด <strong>Run</strong> เพื่อสร้าง 16 ตารางและจัดสี Emerald
+                </p>
+              </div>
+
+              <div className="p-4 bg-white rounded-2xl border border-slate-200 space-y-2">
+                <div className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center text-xs">
+                  4
+                </div>
+                <div className="font-bold text-slate-800">Deploy Web App</div>
+                <p className="text-slate-600 leading-relaxed text-[11px]">
+                  กด <strong>Deploy &gt; New deployment &gt; Web app</strong> เลือก <em>Anyone</em> แล้วนำ URL มาวางในช่องด้านบน
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* 16 Sheets Overview */}
+          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-3">
+            <h4 className="font-bold text-sm text-slate-900 flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              <span>รายชื่อและโครงสร้างทั้ง 16 ตารางใน Google Sheet</span>
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+              {ER_TABLES.map(table => (
+                <div key={table.name} className="p-3 bg-slate-50 rounded-2xl border border-slate-200 text-xs">
+                  <div className="flex items-center justify-between font-mono font-bold text-slate-900 text-[11px]">
+                    <span className="truncate">{table.name}</span>
+                    <span className="text-[10px] px-1.5 py-0.5 bg-emerald-100 text-emerald-800 rounded font-sans">
+                      {table.columns.length} ฟิลด์
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-slate-600 font-medium mt-1">{table.thaiName}</div>
+                  <div className="text-[10px] text-emerald-700 font-mono mt-1">PK: {table.primaryKey}</div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
