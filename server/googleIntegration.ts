@@ -139,3 +139,77 @@ export async function readFromGoogleSheet() {
 
   return { success: false, message: 'No live GAS connection, using persistent store' };
 }
+
+/**
+ * Server-side proxy for Google Apps Script requests
+ * Completely eliminates browser CORS issues and handles Google 302 redirects
+ */
+export async function proxyToGas(targetUrl: string, method: string = 'GET', payload?: any) {
+  const urlToFetch = targetUrl || gasEndpointUrl;
+
+  if (!urlToFetch || !urlToFetch.startsWith('http')) {
+    return {
+      status: 'error',
+      message: 'กรุณากรอก URL ของ Google Apps Script Web App (เช่น https://script.google.com/macros/s/.../exec)',
+    };
+  }
+
+  if (urlToFetch.includes('docs.google.com/spreadsheets')) {
+    return {
+      status: 'error',
+      message: 'URL ที่ระบุคือลิงก์ Google Sheet ไม่ใช่ Web App URL กรุณาไปที่ Extensions > Apps Script > Deploy > New deployment > Web app แล้วนำลิงก์ที่ลงท้ายด้วย /exec มาใช้งาน หรือกดปุ่ม Run setupSheetsAndDrive ใน Apps Script ได้โดยตรง',
+    };
+  }
+
+  try {
+    const fetchOptions: RequestInit = {
+      method,
+      headers: {
+        'Accept': 'application/json',
+      },
+      redirect: 'follow',
+    };
+
+    if (method === 'POST') {
+      fetchOptions.headers = {
+        ...fetchOptions.headers,
+        'Content-Type': 'application/json',
+      };
+      if (payload) {
+        fetchOptions.body = JSON.stringify(payload);
+      }
+    }
+
+    const response = await fetch(urlToFetch, fetchOptions);
+    const text = await response.text();
+
+    if (text.includes('<!DOCTYPE html>') || text.includes('<html')) {
+      if (text.includes('accounts.google.com') || text.includes('Sign in')) {
+        return {
+          status: 'error',
+          message: 'Google Apps Script ปฏิเสธการเข้าถึง กรุณาไปที่หน้า Deploy > Manage deployments > แก้ไข Web app และเปลี่ยน "Who has access (ผู้มีสิทธิ์เข้าถึง)" ให้เป็น "Anyone (ทุกคน)"',
+        };
+      }
+      return {
+        status: 'error',
+        message: 'Google Apps Script ส่งกลับหน้าเว็บ HTML กรุณาตรวจสอบว่าเลือก Web app ที่ลงท้ายด้วย /exec และให้สิทธิ์ Anyone',
+      };
+    }
+
+    try {
+      const data = JSON.parse(text);
+      return data;
+    } catch {
+      return {
+        status: 'success',
+        raw: text,
+        message: 'เชื่อมต่อและดำเนินการกับ Google Apps Script สำเร็จ',
+      };
+    }
+  } catch (err: any) {
+    return {
+      status: 'error',
+      message: `ไม่สามารถเชื่อมต่อ Google Apps Script ได้ (${err.message}) กรุณาตรวจสอบว่า Web App ได้รับการ Deploy และเลือกสิทธิ์ Anyone`,
+    };
+  }
+}

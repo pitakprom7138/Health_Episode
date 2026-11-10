@@ -95,6 +95,23 @@ export const AdminDashboard: React.FC = () => {
   };
 
   const handleTriggerSetup = async () => {
+    const trimmed = urlInput.trim();
+    if (trimmed.includes('docs.google.com/spreadsheets')) {
+      setSetupFeedback({
+        type: 'error',
+        text: 'URL ที่ระบุคือลิงก์หน้า Google Sheet ไม่ใช่ Web App URL กรุณาไปที่ Extensions > Apps Script > Deploy > New deployment > Web app แล้วนำลิงก์ที่ลงท้ายด้วย /exec มาใช้งาน หรือกดปุ่ม Run setupSheetsAndDrive ใน Apps Script โดยตรง',
+      });
+      return;
+    }
+
+    if (!trimmed) {
+      setSetupFeedback({
+        type: 'success',
+        text: '💡 วิธีสร้าง 16 ตารางใน Google Sheet โดยตรง (เร็วที่สุด): 1) กดปุ่ม "คัดลอกโค้ด Google Apps Script" 2) เปิด Google Sheet เมนู Extensions > Apps Script วางโค้ดลงไป 3) เลือกฟังก์ชัน "setupSheetsAndDrive" แล้วกดปุ่ม "Run" ชีททั้ง 16 ตารางจะถูกสร้างและจัดรูปแบบสีเขียวมรกตทันทีใน 5 วินาที!',
+      });
+      return;
+    }
+
     setIsExecutingSetup(true);
     setSetupFeedback(null);
     try {
@@ -114,6 +131,23 @@ export const AdminDashboard: React.FC = () => {
   };
 
   const handleLiveSync = async () => {
+    const trimmed = urlInput.trim();
+    if (!trimmed) {
+      setSetupFeedback({
+        type: 'error',
+        text: 'กรุณากรอก Web App URL (ลงท้ายด้วย /exec) ที่ได้จากการ Deploy ใน Google Apps Script ก่อนซิงค์ข้อมูล หรือดูขั้นตอน 4 ขั้นตอนด้านล่าง',
+      });
+      return;
+    }
+
+    if (trimmed.includes('docs.google.com/spreadsheets')) {
+      setSetupFeedback({
+        type: 'error',
+        text: 'URL ที่ระบุคือลิงก์ Google Sheet ไม่ใช่ Web App URL กรุณา Deploy เป็น Web app ใน Apps Script แล้วนำ URL ที่ลงท้ายด้วย /exec มากรอก',
+      });
+      return;
+    }
+
     setIsExecutingSetup(true);
     setSetupFeedback(null);
     try {

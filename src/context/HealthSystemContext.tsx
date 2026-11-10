@@ -848,16 +848,35 @@ export const HealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     localStorage.clear();
   };
 
-  // Live Sync with Google Apps Script Web App (all 16 tables)
+  // Live Sync with Google Apps Script Web App via server proxy (CORS-free)
   const syncWithGas = async (): Promise<{ success: boolean; message: string }> => {
-    if (!gasWebAppUrl) {
-      return { success: false, message: 'กรุณากรอก URL ของ Google Apps Script Web App ในหน้าตั้งค่าก่อนซิงค์' };
+    if (!gasWebAppUrl || !gasWebAppUrl.trim()) {
+      return {
+        success: false,
+        message: 'ยังไม่ได้ระบุ Web App URL กรุณากรอก Web App URL (ลงท้ายด้วย /exec) หรือเปิด Google Sheet แล้วกด Run ฟังก์ชัน setupSheetsAndDrive ใน Apps Script โดยตรง',
+      };
+    }
+
+    const trimmedUrl = gasWebAppUrl.trim();
+    if (trimmedUrl.includes('docs.google.com/spreadsheets')) {
+      return {
+        success: false,
+        message: 'URL ที่ระบุคือลิงก์ Google Sheet ไม่ใช่ Web App URL กรุณาไปที่ Extensions > Apps Script > Deploy > New deployment > Web app แล้วนำลิงก์ที่ลงท้ายด้วย /exec มาใช้งาน',
+      };
     }
 
     setIsGasSyncing(true);
     try {
-      const res = await fetch(`${gasWebAppUrl}?action=getAllData&spreadsheetId=${SPREADSHEET_ID}`);
-      const json = await res.json();
+      const proxyRes = await fetch('/api/sheets/proxy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          targetUrl: `${trimmedUrl}${trimmedUrl.includes('?') ? '&' : '?'}action=getAllData&spreadsheetId=${SPREADSHEET_ID}`,
+          method: 'GET',
+        }),
+      });
+
+      const json = await proxyRes.json();
       if (json.status === 'success' && json.data) {
         // Sync all 16 relational tables if available in the spreadsheet
         if (json.data.Patients && json.data.Patients.length > 0) setPatients(json.data.Patients);
@@ -875,17 +894,23 @@ export const HealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         if (json.data.Patient_Feedback && json.data.Patient_Feedback.length > 0) setPatientFeedbacks(json.data.Patient_Feedback);
         if (json.data.Attachments && json.data.Attachments.length > 0) setAttachments(json.data.Attachments);
         if (json.data.Audit_Log && json.data.Audit_Log.length > 0) setAuditLogs(json.data.Audit_Log);
-        
+
         addAuditLog('EXPORT_SHEETS', 'Google_Sheets', SPREADSHEET_ID, 'ซิงค์ข้อมูลสำเร็จกับ Google Sheets ทั้ง 16 ตาราง');
         setIsGasSyncing(false);
         return { success: true, message: 'ซิงค์ข้อมูลกับ Google Sheet 16 ตารางสำเร็จสมบูรณ์!' };
       } else {
         setIsGasSyncing(false);
-        return { success: false, message: json.message || 'ไม่สามารถรับข้อมูลจาก Google Apps Script ได้' };
+        return {
+          success: false,
+          message: json.message || 'ไม่สามารถรับข้อมูลจาก Google Apps Script ได้ กรุณาตรวจสอบการตั้งค่า Deploy (เลือก Anyone)',
+        };
       }
     } catch (err: any) {
       setIsGasSyncing(false);
-      return { success: false, message: `เกิดข้อผิดพลาดในการเชื่อมต่อ: ${err.message}` };
+      return {
+        success: false,
+        message: `เกิดข้อผิดพลาดในการเชื่อมต่อ (${err.message}) กรุณาตรวจสอบว่าเลือก Deploy เป็น Web app และเลือกสิทธิ์ Anyone`,
+      };
     }
   };
 
@@ -894,39 +919,40 @@ export const HealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     setIsGasSyncing(true);
     addAuditLog('EXPORT_SHEETS', 'Google_Sheets', SPREADSHEET_ID, 'ส่งคำสั่งสร้างและจัดรูปแบบโครงสร้าง 16 ตารางใน Google Sheet');
 
-    // 1. Direct call to GAS Web App if URL is configured
-    if (gasWebAppUrl) {
+    const trimmedUrl = gasWebAppUrl.trim();
+
+    // 1. If Web App URL is configured, call via server proxy
+    if (trimmedUrl && !trimmedUrl.includes('docs.google.com/spreadsheets')) {
       try {
-        const directRes = await fetch(`${gasWebAppUrl}?action=setupSheets&spreadsheetId=${SPREADSHEET_ID}`);
-        const directJson = await directRes.json();
-        if (directJson.status === 'success') {
-          setIsGasSyncing(false);
-          return {
-            success: true,
-            message: directJson.message || 'สร้างและเชื่อมโยงชีททั้ง 16 ตารางใน Google Sheet สำเร็จเรียบร้อย!',
-          };
-        }
-      } catch (directErr: any) {
-        console.warn('Direct GET setupSheets failed, trying POST no-cors:', directErr.message);
-        try {
-          await fetch(gasWebAppUrl, {
+        const proxyRes = await fetch('/api/sheets/proxy', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            targetUrl: trimmedUrl,
             method: 'POST',
-            mode: 'no-cors',
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify({ action: 'setupSheets', spreadsheetId: SPREADSHEET_ID }),
-          });
+            payload: { action: 'setupSheets', spreadsheetId: SPREADSHEET_ID },
+          }),
+        });
+        const json = await proxyRes.json();
+        if (json.status === 'success') {
           setIsGasSyncing(false);
           return {
             success: true,
-            message: 'ส่งคำสั่งสร้าง 16 ตารางไปยัง Google Apps Script เรียบร้อยแล้ว (กำลังประมวลผล)',
+            message: json.message || 'สร้างและเชื่อมโยงชีททั้ง 16 ตารางใน Google Sheet สำเร็จเรียบร้อย!',
           };
-        } catch (noCorsErr: any) {
-          console.warn('no-cors POST also had issue:', noCorsErr.message);
+        } else if (json.message) {
+          setIsGasSyncing(false);
+          return {
+            success: false,
+            message: json.message,
+          };
         }
+      } catch (err: any) {
+        console.warn('Proxy setupSheets error:', err.message);
       }
     }
 
-    // 2. Local backend proxy route
+    // 2. Also record in server proxy
     try {
       const serverRes = await fetch('/api/sheets/save-record', {
         method: 'POST',
@@ -940,6 +966,14 @@ export const HealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       });
       const serverJson = await serverRes.json();
       setIsGasSyncing(false);
+
+      if (!trimmedUrl) {
+        return {
+          success: true,
+          message: 'เตรียมข้อมูลระบบเรียบร้อย! เพื่อให้ชีท 16 ตารางปรากฏใน Google Sheet ทันที: กรุณาเปิด Apps Script แล้วกดปุ่ม "Run" บนฟังก์ชัน setupSheetsAndDrive ได้โดยตรง',
+        };
+      }
+
       return {
         success: true,
         message: serverJson.message || 'บันทึกคำสั่งเตรียมโครงสร้าง 16 ตารางในระบบเรียบร้อยแล้ว',

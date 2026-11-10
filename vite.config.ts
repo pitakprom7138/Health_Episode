@@ -9,6 +9,7 @@ import {
   readFromGoogleSheet,
   setGasEndpoint,
   getGasEndpoint,
+  proxyToGas,
 } from './server/googleIntegration.ts';
 
 function geminiApiPlugin(): Plugin {
@@ -138,6 +139,32 @@ function geminiApiPlugin(): Plugin {
             res.setHeader('Content-Type', 'application/json');
             res.statusCode = 200;
             res.end(JSON.stringify({ success: true, isConnected: Boolean(getGasEndpoint()) }));
+            return;
+          }
+        }
+
+        // 7. Proxy to Google Apps Script (CORS-free server fetch)
+        if (req.url === '/api/sheets/proxy') {
+          if (req.method === 'POST') {
+            let body = '';
+            req.on('data', chunk => { body += chunk; });
+            req.on('end', async () => {
+              try {
+                const parsed = JSON.parse(body || '{}');
+                const targetUrl = parsed.targetUrl || getGasEndpoint();
+                const method = parsed.method || 'GET';
+                const payload = parsed.payload;
+
+                const result = await proxyToGas(targetUrl, method, payload);
+                res.setHeader('Content-Type', 'application/json');
+                res.statusCode = 200;
+                res.end(JSON.stringify(result));
+              } catch (e: any) {
+                res.setHeader('Content-Type', 'application/json');
+                res.statusCode = 500;
+                res.end(JSON.stringify({ status: 'error', message: e.message }));
+              }
+            });
             return;
           }
         }
