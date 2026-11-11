@@ -658,10 +658,22 @@ function appendObjectToSheet(sheet, obj) {
   const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
   const row = headers.map(function(header) {
     var val = obj[header];
+    if (val === undefined || val === null) return '';
     if (Array.isArray(val)) {
       return val.join(', ');
     }
-    return val !== undefined && val !== null ? val : '';
+    if (typeof val === 'object') {
+      try {
+        if (typeof val.join === 'function') return val.join(', ');
+        return JSON.stringify(val);
+      } catch (e) {
+        return '';
+      }
+    }
+    if (typeof val === 'string' && val.indexOf('[Ljava') !== -1) {
+      return '';
+    }
+    return val;
   });
   sheet.appendRow(row);
 }

@@ -129,20 +129,93 @@ export async function appendToGoogleSheet(action: string, data: any, userEmail: 
   };
 }
 
+const ALL_16_SHEETS = [
+  'Patients',
+  'Patient_Medications',
+  'Health_Episodes',
+  'Clinical_Assessments',
+  'Medication_Catalog',
+  'Episode_Medications',
+  'Clinical_Actions',
+  'Assessment_Data_Sources',
+  'Followups',
+  'Patient_Feedback',
+  'Attachments',
+  'Users',
+  'Pharmacists',
+  'Lab_Results',
+  'Drug_Usage_Summary',
+  'Audit_Log',
+];
+
+async function fetchSheetViaGviz(sheetName: string): Promise<any[]> {
+  try {
+    const url = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}`;
+    const res = await fetch(url);
+    const text = await res.text();
+    const match = text.match(/google\.visualization\.Query\.setResponse\((.*)\);/s);
+    if (!match) return [];
+    const parsed = JSON.parse(match[1]);
+    if (parsed.status !== 'ok' || !parsed.table || !parsed.table.cols) return [];
+
+    const cols = parsed.table.cols.map((c: any) => c.label || c.id);
+    const rows = (parsed.table.rows || []).map((r: any) => {
+      const obj: Record<string, any> = {};
+      r.c.forEach((cell: any, idx: number) => {
+        const colName = cols[idx];
+        if (colName) {
+          let val = cell ? (cell.f !== undefined ? cell.f : cell.v) : null;
+          if (typeof val === 'string' && val.startsWith('[Ljava.lang.Object;@')) {
+            val = '';
+          }
+          obj[colName] = val;
+        }
+      });
+      return obj;
+    });
+    return rows;
+  } catch (err: any) {
+    console.warn(`Error reading sheet ${sheetName}:`, err.message);
+    return [];
+  }
+}
+
 /**
- * Reads all data from Google Sheet 1hRAW8P6_zWD-pGDxXohn7kOisp_QQlm8dsA8N8iFGiE
+ * Reads all data in real-time from Google Sheet 1hRAW8P6_zWD-pGDxXohn7kOisp_QQlm8dsA8N8iFGiE
  */
 export async function readFromGoogleSheet() {
+  // 1. If GAS endpoint is set and active, try it first
   if (gasEndpointUrl) {
     try {
       const response = await fetch(`${gasEndpointUrl}?action=getAllData&spreadsheetId=${SPREADSHEET_ID}`);
       const result = await response.json();
-      if (result.status === 'success' && result.data) {
-        return { success: true, data: result.data };
+      if (result.status === 'success' && result.data && Object.keys(result.data).length > 0) {
+        return { success: true, data: result.data, source: 'gas' };
       }
     } catch (err: any) {
-      console.warn('Failed to read from GAS endpoint:', err.message);
+      console.warn('Failed to read from GAS endpoint, falling back to direct sheet query:', err.message);
     }
+  }
+
+  // 2. Direct real-time fetch from Google Sheet 1hRAW8P6_zWD-pGDxXohn7kOisp_QQlm8dsA8N8iFGiE
+  try {
+    const entries = await Promise.all(
+      ALL_16_SHEETS.map(async name => {
+        const rows = await fetchSheetViaGviz(name);
+        return [name, rows] as const;
+      })
+    );
+    const data: Record<string, any[]> = {};
+    for (const [name, rows] of entries) {
+      data[name] = rows;
+    }
+
+    const hasAnyData = Object.values(data).some(arr => arr.length > 0);
+    if (hasAnyData) {
+      return { success: true, data, source: 'google_sheet_gviz' };
+    }
+  } catch (err: any) {
+    console.warn('Direct sheet read error:', err.message);
   }
 
   return { success: false, message: 'No live GAS connection, using persistent store' };

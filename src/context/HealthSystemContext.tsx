@@ -191,11 +191,127 @@ export const HealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     return saved ? JSON.parse(saved) : INITIAL_AUDIT_LOGS;
   });
 
-  // Current User (Defaults to Somchai for testing or loaded from localStorage)
-  const [currentUserId, setCurrentUserId] = useState<string | null>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY}_currentUserId`);
-    return saved !== null && saved !== '' ? saved : 'USR001';
-  });
+  // Current User (Defaults to null so Login screen is always opened first for real production use)
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
+  // Startup: Automatically fetch live real-time data from Google Sheet 1hRAW8P6_zWD-pGDxXohn7kOisp_QQlm8dsA8N8iFGiE
+  useEffect(() => {
+    let isMounted = true;
+    fetch('/api/sheets/fetch-all')
+      .then(res => res.json())
+      .then(res => {
+        if (!isMounted || !res.success || !res.data) return;
+        const d = res.data;
+
+        // 1. Patients
+        if (d.Patients && Array.isArray(d.Patients) && d.Patients.length > 0) {
+          const parsedPts: Patient[] = d.Patients.map((p: any) => ({
+            ...p,
+            Chronic_Diseases: Array.isArray(p.Chronic_Diseases)
+              ? p.Chronic_Diseases
+              : typeof p.Chronic_Diseases === 'string' && !p.Chronic_Diseases.startsWith('[Ljava')
+              ? p.Chronic_Diseases.split(',').map((s: string) => s.trim()).filter(Boolean)
+              : [],
+            Known_Allergies: Array.isArray(p.Known_Allergies)
+              ? p.Known_Allergies
+              : typeof p.Known_Allergies === 'string' && !p.Known_Allergies.startsWith('[Ljava')
+              ? p.Known_Allergies.split(',').map((s: string) => s.trim()).filter(Boolean)
+              : [],
+          }));
+          setPatients(parsedPts);
+        }
+
+        // 2. Health Episodes
+        if (d.Health_Episodes && Array.isArray(d.Health_Episodes) && d.Health_Episodes.length > 0) {
+          const parsedEps: HealthEpisode[] = d.Health_Episodes.map((ep: any) => ({
+            ...ep,
+            Emergency_Red_Flags: Array.isArray(ep.Emergency_Red_Flags)
+              ? ep.Emergency_Red_Flags
+              : typeof ep.Emergency_Red_Flags === 'string' && !ep.Emergency_Red_Flags.startsWith('[Ljava')
+              ? ep.Emergency_Red_Flags.split(',').map((s: string) => s.trim()).filter(Boolean)
+              : [],
+            Has_Emergency_Flags: ep.Has_Emergency_Flags === true || ep.Has_Emergency_Flags === 'TRUE' || ep.Has_Emergency_Flags === 'true',
+            Duration_Days: Number(ep.Duration_Days) || 1,
+            Temperature_C: ep.Temperature_C ? Number(ep.Temperature_C) : undefined,
+            Pulse_BPM: ep.Pulse_BPM ? Number(ep.Pulse_BPM) : undefined,
+            Systolic_BP: ep.Systolic_BP ? Number(ep.Systolic_BP) : undefined,
+            Diastolic_BP: ep.Diastolic_BP ? Number(ep.Diastolic_BP) : undefined,
+            Resp_Rate: ep.Resp_Rate ? Number(ep.Resp_Rate) : undefined,
+          }));
+          setHealthEpisodes(parsedEps);
+        }
+
+        // 3. Clinical Assessments
+        if (d.Clinical_Assessments && Array.isArray(d.Clinical_Assessments) && d.Clinical_Assessments.length > 0) {
+          setClinicalAssessments(d.Clinical_Assessments);
+        }
+
+        // 4. Users
+        if (d.Users && Array.isArray(d.Users) && d.Users.length > 0) {
+          setUsers(d.Users);
+        }
+
+        // 5. Pharmacists
+        if (d.Pharmacists && Array.isArray(d.Pharmacists) && d.Pharmacists.length > 0) {
+          setPharmacists(d.Pharmacists);
+        }
+
+        // 6. Medication Catalog
+        if (d.Medication_Catalog && Array.isArray(d.Medication_Catalog) && d.Medication_Catalog.length > 0) {
+          setMedicationCatalog(d.Medication_Catalog);
+        }
+
+        // 7. Patient Medications
+        if (d.Patient_Medications && Array.isArray(d.Patient_Medications) && d.Patient_Medications.length > 0) {
+          setPatientMedications(d.Patient_Medications);
+        }
+
+        // 8. Episode Medications
+        if (d.Episode_Medications && Array.isArray(d.Episode_Medications) && d.Episode_Medications.length > 0) {
+          setEpisodeMedications(d.Episode_Medications);
+        }
+
+        // 9. Clinical Actions
+        if (d.Clinical_Actions && Array.isArray(d.Clinical_Actions) && d.Clinical_Actions.length > 0) {
+          setClinicalActions(d.Clinical_Actions);
+        }
+
+        // 10. Assessment Data Sources
+        if (d.Assessment_Data_Sources && Array.isArray(d.Assessment_Data_Sources) && d.Assessment_Data_Sources.length > 0) {
+          setAssessmentDataSources(d.Assessment_Data_Sources);
+        }
+
+        // 11. Followups
+        if (d.Followups && Array.isArray(d.Followups) && d.Followups.length > 0) {
+          setFollowups(d.Followups);
+        }
+
+        // 12. Patient Feedback
+        if (d.Patient_Feedback && Array.isArray(d.Patient_Feedback) && d.Patient_Feedback.length > 0) {
+          setPatientFeedbacks(d.Patient_Feedback);
+        }
+
+        // 13. Attachments
+        if (d.Attachments && Array.isArray(d.Attachments) && d.Attachments.length > 0) {
+          setAttachments(d.Attachments);
+        }
+
+        // 14. Lab Results
+        if (d.Lab_Results && Array.isArray(d.Lab_Results) && d.Lab_Results.length > 0) {
+          setLabResults(d.Lab_Results);
+        }
+
+        // 16. Audit Log
+        if (d.Audit_Log && Array.isArray(d.Audit_Log) && d.Audit_Log.length > 0) {
+          setAuditLogs(d.Audit_Log);
+        }
+
+        setLastSyncTime(new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+      })
+      .catch(err => console.warn('Real-time sheet startup load error:', err.message));
+
+    return () => { isMounted = false; };
+  }, []);
 
   const [gasWebAppUrl, setGasWebAppUrlState] = useState<string>(() => {
     return localStorage.getItem(`${STORAGE_KEY}_gasUrl`) || '';
@@ -432,8 +548,12 @@ export const HealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     }
 
     const cleanExpectedPhone = expectedPhone.replace(/\D/g, '');
+    const p1 = cleanInputPhone.startsWith('0') ? cleanInputPhone.slice(1) : cleanInputPhone;
+    const p2 = cleanExpectedPhone.startsWith('0') ? cleanExpectedPhone.slice(1) : cleanExpectedPhone;
+
     const isPasswordValid =
       (cleanInputPhone && cleanExpectedPhone && cleanInputPhone === cleanExpectedPhone) ||
+      (p1 && p2 && p1 === p2) ||
       phonePassword.trim() === expectedPhone.trim();
 
     if (!isPasswordValid) {
