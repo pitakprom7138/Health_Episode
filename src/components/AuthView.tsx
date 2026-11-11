@@ -1,20 +1,15 @@
 import React, { useState } from 'react';
 import {
-  Activity,
   User,
   Stethoscope,
-  ShieldCheck,
-  Lock,
   Mail,
   Phone,
   ArrowRight,
   AlertCircle,
   CheckCircle2,
-  Sparkles,
   ShieldAlert,
   UserPlus,
   KeyRound,
-  FileSpreadsheet,
 } from 'lucide-react';
 import { useHealthSystem } from '../context/HealthSystemContext';
 import { RegisterParams } from '../types/healthSystem';
@@ -24,7 +19,7 @@ interface AuthViewProps {
 }
 
 export const AuthView: React.FC<AuthViewProps> = ({ onSuccessLogin }) => {
-  const { login, register, quickLoginAs } = useHealthSystem();
+  const { login, register } = useHealthSystem();
 
   const [activeTab, setActiveTab] = useState<'LOGIN' | 'REGISTER'>('LOGIN');
 
@@ -145,21 +140,6 @@ export const AuthView: React.FC<AuthViewProps> = ({ onSuccessLogin }) => {
     }
   };
 
-  const fillAndLoginDemo = (role: 'Patient' | 'Pharmacist' | 'Admin') => {
-    if (role === 'Patient') {
-      setLoginEmail('somchai@example.com');
-      setLoginPhone('081-234-5678');
-    } else if (role === 'Pharmacist') {
-      setLoginEmail('narin.rx@hospital.ac.th');
-      setLoginPhone('089-111-2233');
-    } else {
-      setLoginEmail('admin@health-episode.org');
-      setLoginPhone('080-999-8877');
-    }
-    quickLoginAs(role);
-    if (onSuccessLogin) onSuccessLogin();
-  };
-
   return (
     <div className="min-h-[85vh] flex items-center justify-center py-6 px-4 sm:px-6">
       <div className="max-w-4xl w-full grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
@@ -184,40 +164,40 @@ export const AuthView: React.FC<AuthViewProps> = ({ onSuccessLogin }) => {
             แยกสิทธิ์การใช้งานอย่างรัดกุมตามมาตรฐานเวชระเบียนและความปลอดภัยของข้อมูลสุขภาพส่วนบุคคล (PDPA)
           </p>
 
-          {/* Role Access Highlights */}
+          {/* Key Production Healthcare Features */}
           <div className="space-y-3">
             <div className="p-3 bg-white rounded-2xl border border-slate-200 text-xs flex items-center gap-3 shadow-xs">
               <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold shrink-0">
-                <User className="w-4 h-4 text-emerald-700" />
+                <CheckCircle2 className="w-4 h-4 text-emerald-700" />
               </div>
               <div>
-                <span className="font-bold text-slate-800 block">สิทธิ์ผู้ป่วย (Patient)</span>
+                <span className="font-bold text-slate-800 block">บริการคำปรึกษาและบริบาลเภสัชกรรม</span>
                 <span className="text-[11px] text-slate-500">
-                  บันทึกอาการ, แนบภาพยา, บันทึกผลแล็บ, ดูคำแนะนำ และประเมินผลลัพธ์
+                  ปรึกษาอาการเจ็บป่วย การใช้ยา และรับคำแนะนำโดยตรงจากเภสัชกรประจำตัว
                 </span>
               </div>
             </div>
 
             <div className="p-3 bg-white rounded-2xl border border-slate-200 text-xs flex items-center gap-3 shadow-xs">
               <div className="w-8 h-8 rounded-xl bg-teal-100 text-teal-800 flex items-center justify-center font-bold shrink-0">
-                <Stethoscope className="w-4 h-4 text-teal-700" />
+                <CheckCircle2 className="w-4 h-4 text-teal-700" />
               </div>
               <div>
-                <span className="font-bold text-slate-800 block">สิทธิ์เภสัชกร (Pharmacist)</span>
+                <span className="font-bold text-slate-800 block">เวชระเบียนสุขภาพและการใช้ยาต่อเนื่อง</span>
                 <span className="text-[11px] text-slate-500">
-                  คิวบริบาล, ตรวจสอบประวัติยา/แล็บ, ประเมินทางคลินิก, สั่งใช้ยา และติดตามผล
+                  บันทึกประวัติอาการ ภาพฉลากยา ประวัติการแพ้ยา และผลตรวจทางห้องปฏิบัติการ
                 </span>
               </div>
             </div>
 
             <div className="p-3 bg-white rounded-2xl border border-slate-200 text-xs flex items-center gap-3 shadow-xs">
-              <div className="w-8 h-8 rounded-xl bg-slate-800 text-white flex items-center justify-center font-bold shrink-0">
-                <ShieldCheck className="w-4 h-4 text-emerald-400" />
+              <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-800 flex items-center justify-center font-bold shrink-0">
+                <CheckCircle2 className="w-4 h-4 text-emerald-700" />
               </div>
               <div>
-                <span className="font-bold text-slate-800 block">สิทธิ์ผู้ดูแลระบบ (Admin)</span>
+                <span className="font-bold text-slate-800 block">ความปลอดภัยของข้อมูลสุขภาพส่วนบุคคล</span>
                 <span className="text-[11px] text-slate-500">
-                  จัดการบัญชีผู้ใช้ (RBAC), ทะเบียนยา, สรุปการใช้ยา และตรวจสอบ Audit Trail
+                  รักษาความลับของข้อมูลตามมาตรฐาน PDPA จำกัดสิทธิ์การเข้าถึงเฉพาะเจ้าของข้อมูล
                 </span>
               </div>
             </div>
@@ -334,59 +314,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onSuccessLogin }) => {
                 </button>
               </form>
 
-              {/* Demo Accounts Quick-Fill Section */}
-              <div className="pt-4 border-t border-slate-200">
-                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-2">
-                  บัญชีทดสอบระบบตามบทบาท (คลิกเพื่อเข้าสู่ระบบทันที):
-                </span>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
-                  <button
-                    type="button"
-                    onClick={() => fillAndLoginDemo('Patient')}
-                    className="p-2.5 bg-emerald-50 hover:bg-emerald-100/80 border border-emerald-200 rounded-xl text-left transition flex flex-col justify-between"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-emerald-900 text-xs">ผู้ป่วย (Patient)</span>
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-200 text-emerald-900">
-                        1-Click
-                      </span>
-                    </div>
-                    <div className="text-[11px] text-slate-600 mt-1 truncate">somchai@example.com</div>
-                    <div className="text-[10px] text-slate-400 font-mono">081-234-5678</div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => fillAndLoginDemo('Pharmacist')}
-                    className="p-2.5 bg-teal-50 hover:bg-teal-100/80 border border-teal-200 rounded-xl text-left transition flex flex-col justify-between"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-teal-900 text-xs">เภสัชกร (Pharmacist)</span>
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-teal-200 text-teal-900">
-                        1-Click
-                      </span>
-                    </div>
-                    <div className="text-[11px] text-slate-600 mt-1 truncate">narin.rx@hospital.ac.th</div>
-                    <div className="text-[10px] text-slate-400 font-mono">089-111-2233</div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => fillAndLoginDemo('Admin')}
-                    className="p-2.5 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-xl text-left transition flex flex-col justify-between"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-slate-900 text-xs">ผู้ดูแลระบบ (Admin)</span>
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-300 text-slate-800">
-                        1-Click
-                      </span>
-                    </div>
-                    <div className="text-[11px] text-slate-600 mt-1 truncate">admin@health-episode.org</div>
-                    <div className="text-[10px] text-slate-400 font-mono">080-999-8877</div>
-                  </button>
-                </div>
-              </div>
             </div>
           )}
 

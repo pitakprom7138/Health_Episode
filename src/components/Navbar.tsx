@@ -110,28 +110,17 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             {/* PHARMACIST MENU */}
             {currentUser?.Role === 'Pharmacist' && (
-              <>
-                <button
-                  onClick={() => setCurrentTab('pharmacist')}
-                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition ${
-                    currentTab === 'pharmacist'
-                      ? 'bg-emerald-800 text-white shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-                  }`}
-                >
-                  <Stethoscope className="w-4 h-4" />
-                  <span>คิวบริบาลเภสัชกรรม (Queue)</span>
-                </button>
-
-                <button
-                  onClick={openErModal}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-600 hover:text-emerald-800 hover:bg-slate-50 transition"
-                  title="ดูโครงสร้างฐานข้อมูล 16 ตาราง"
-                >
-                  <Database className="w-4 h-4 text-emerald-700" />
-                  <span>โครงสร้างฐานข้อมูล (ER)</span>
-                </button>
-              </>
+              <button
+                onClick={() => setCurrentTab('pharmacist')}
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition ${
+                  currentTab === 'pharmacist'
+                    ? 'bg-emerald-800 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                }`}
+              >
+                <Stethoscope className="w-4 h-4" />
+                <span>คิวบริบาลเภสัชกรรม (Queue)</span>
+              </button>
             )}
 
             {/* ADMIN MENU */}
@@ -252,22 +241,14 @@ export const Navbar: React.FC<NavbarProps> = ({
             )}
 
             {currentUser.Role === 'Pharmacist' && (
-              <>
-                <button
-                  onClick={() => setCurrentTab('pharmacist')}
-                  className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap ${
-                    currentTab === 'pharmacist' ? 'bg-emerald-800 text-white' : 'text-slate-600'
-                  }`}
-                >
-                  คิวบริบาลเภสัชกรรม
-                </button>
-                <button
-                  onClick={openErModal}
-                  className="px-3 py-1.5 rounded-xl font-bold whitespace-nowrap text-emerald-800 bg-emerald-50"
-                >
-                  ฐานข้อมูล (ER)
-                </button>
-              </>
+              <button
+                onClick={() => setCurrentTab('pharmacist')}
+                className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap ${
+                  currentTab === 'pharmacist' ? 'bg-emerald-800 text-white' : 'text-slate-600'
+                }`}
+              >
+                คิวบริบาลเภสัชกรรม
+              </button>
             )}
 
             {currentUser.Role === 'Admin' && (
