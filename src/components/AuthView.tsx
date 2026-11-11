@@ -10,18 +10,21 @@ import {
   ShieldAlert,
   UserPlus,
   KeyRound,
+  Link2,
 } from 'lucide-react';
 import { useHealthSystem } from '../context/HealthSystemContext';
 import { RegisterParams } from '../types/healthSystem';
+import { GasConnectionModal } from './GasConnectionModal';
 
 interface AuthViewProps {
   onSuccessLogin?: () => void;
 }
 
 export const AuthView: React.FC<AuthViewProps> = ({ onSuccessLogin }) => {
-  const { login, register } = useHealthSystem();
+  const { login, register, gasWebAppUrl } = useHealthSystem();
 
   const [activeTab, setActiveTab] = useState<'LOGIN' | 'REGISTER'>('LOGIN');
+  const [isGasModalOpen, setIsGasModalOpen] = useState(false);
 
   // Login Form State
   const [loginEmail, setLoginEmail] = useState('');
@@ -329,9 +332,26 @@ export const AuthView: React.FC<AuthViewProps> = ({ onSuccessLogin }) => {
               </div>
 
               {regError && (
-                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
-                  <span>{regError}</span>
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
+                    <span>{regError}</span>
+                  </div>
+                  {regError.includes('มีอยู่ในระบบแล้ว') && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLoginEmail(regEmail);
+                        setLoginPhone(regPhone);
+                        setActiveTab('LOGIN');
+                        setRegError(null);
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg font-bold text-xs shadow-xs transition"
+                    >
+                      <span>สลับไปแท็บเข้าสู่ระบบด้วยอีเมลนี้ทันที</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -593,8 +613,38 @@ export const AuthView: React.FC<AuthViewProps> = ({ onSuccessLogin }) => {
               </form>
             </div>
           )}
+
+          {/* Bottom Google Sheets & Drive Connection Bar */}
+          <div className="mt-6 pt-4 border-t border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[11px]">
+            <div className="flex items-center gap-2 text-slate-600">
+              <span
+                className={`w-2.5 h-2.5 rounded-full shrink-0 ${
+                  gasWebAppUrl ? 'bg-emerald-500 animate-pulse' : 'bg-amber-400'
+                }`}
+              />
+              <span className="text-slate-500">สถานะฐานข้อมูล Sheet & Drive:</span>
+              <span className={gasWebAppUrl ? 'text-emerald-700 font-bold' : 'text-amber-700 font-semibold'}>
+                {gasWebAppUrl ? 'เชื่อมต่อ Web App สำเร็จ' : 'ยังไม่ได้เชื่อมต่อ Web App'}
+              </span>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setIsGasModalOpen(true)}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-emerald-800 hover:text-emerald-950 font-bold hover:bg-emerald-50 rounded-lg transition self-start sm:self-auto"
+            >
+              <Link2 className="w-3.5 h-3.5 text-emerald-600" />
+              <span>{gasWebAppUrl ? 'ตั้งค่าการเชื่อมต่อ' : 'ตั้งค่า Web App เพื่อบันทึกลงชีท'}</span>
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* Gas Connection Modal */}
+      <GasConnectionModal
+        isOpen={isGasModalOpen}
+        onClose={() => setIsGasModalOpen(false)}
+      />
     </div>
   );
 };

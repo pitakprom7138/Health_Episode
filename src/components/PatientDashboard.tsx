@@ -294,7 +294,7 @@ export const PatientDashboard: React.FC<PatientDashboardProps> = ({
                   <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
                     <span className="flex items-center gap-1">
                       <Clock className="w-3 h-3" />
-                      {ep.Onset_DateTime.slice(0, 16)}
+                      {String(ep.Onset_DateTime || '').slice(0, 16)}
                     </span>
                     <span>เป็นมา {ep.Duration_Days} วัน</span>
                   </div>

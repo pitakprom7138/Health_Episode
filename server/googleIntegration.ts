@@ -7,17 +7,47 @@
  * without exposing raw links or folder IDs on the frontend UI.
  */
 
+import fs from 'fs';
+import path from 'path';
+
 export const SPREADSHEET_ID = '1hRAW8P6_zWD-pGDxXohn7kOisp_QQlm8dsA8N8iFGiE';
 export const DRIVE_FOLDER_ID = '16NAYAa6rlefbnTlIObqgdIePdG0207Dn';
 
-let gasEndpointUrl = process.env.GAS_WEBAPP_URL || '';
+const CONFIG_FILE_PATH = path.resolve(process.cwd(), 'server', 'gas-config.json');
+
+function loadStoredGasEndpoint(): string {
+  try {
+    if (fs.existsSync(CONFIG_FILE_PATH)) {
+      const data = fs.readFileSync(CONFIG_FILE_PATH, 'utf-8');
+      const parsed = JSON.parse(data);
+      return parsed.gasUrl || '';
+    }
+  } catch (err) {
+    console.warn('Error reading gas-config.json:', err);
+  }
+  return process.env.GAS_WEBAPP_URL || '';
+}
+
+let gasEndpointUrl = loadStoredGasEndpoint();
 
 export function getGasEndpoint(): string {
+  if (!gasEndpointUrl) {
+    gasEndpointUrl = loadStoredGasEndpoint();
+  }
   return gasEndpointUrl;
 }
 
 export function setGasEndpoint(url: string): void {
-  gasEndpointUrl = url;
+  gasEndpointUrl = url.trim();
+  try {
+    const dir = path.dirname(CONFIG_FILE_PATH);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(CONFIG_FILE_PATH, JSON.stringify({ gasUrl: gasEndpointUrl, updatedAt: new Date().toISOString() }, null, 2));
+  } catch (err) {
+    console.warn('Error saving gas-config.json:', err);
+  }
 }
 
 export interface AttachmentUploadPayload {
@@ -35,13 +65,18 @@ export interface AttachmentUploadPayload {
 export async function uploadToGoogleDrive(payload: AttachmentUploadPayload) {
   const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
   const localFileId = `FILE_${Date.now()}`;
+  const cleanBase64 = payload.base64.includes('base64,') ? payload.base64.split('base64,')[1] : payload.base64;
+
+  const endpoint = getGasEndpoint();
 
   // If a GAS Web App endpoint is configured, forward the upload to Google Drive directly
-  if (gasEndpointUrl) {
+  if (endpoint) {
     try {
-      const response = await fetch(gasEndpointUrl, {
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        redirect: 'follow',
+        signal: AbortSignal.timeout(12000),
         body: JSON.stringify({
           action: 'uploadFileToDrive',
           role: 'System',
@@ -49,7 +84,7 @@ export async function uploadToGoogleDrive(payload: AttachmentUploadPayload) {
           fileData: {
             name: payload.name,
             type: payload.type,
-            base64: payload.base64,
+            base64: cleanBase64,
             recordType: payload.recordType,
             recordId: payload.recordId,
             folderId: DRIVE_FOLDER_ID,
@@ -57,29 +92,34 @@ export async function uploadToGoogleDrive(payload: AttachmentUploadPayload) {
         }),
       });
 
-      const result = await response.json();
-      if (result.status === 'success' && result.attachment) {
-        return {
-          success: true,
-          attachment: result.attachment,
-          message: 'บันทึกไฟล์ลงในระบบคลังเอกสารเรียบร้อยแล้ว',
-        };
+      const text = await response.text();
+      try {
+        const result = JSON.parse(text);
+        if (result.status === 'success' && result.attachment) {
+          return {
+            success: true,
+            attachment: result.attachment,
+            message: 'บันทึกไฟล์ลงในระบบคลังเอกสารและ Google Drive เรียบร้อยแล้ว',
+          };
+        }
+      } catch (e) {
+        console.warn('GAS Drive upload returned non-JSON:', text.substring(0, 100));
       }
     } catch (err: any) {
-      console.warn('GAS Drive upload fallback to secure server attachment storage:', err.message);
+      console.warn('GAS Drive upload error:', err.message);
     }
   }
 
-  // Robust server-side storage metadata representation for Google Drive Folder
+  // Safe server-side metadata representation for Google Drive Folder
   const attachmentRecord = {
     Attachment_ID: `ATT${Date.now()}`,
     Record_Type: payload.recordType,
     Record_ID: payload.recordId,
     File_Name: payload.name,
     File_Type: payload.type,
-    File_Size_KB: Math.round(payload.base64.length * 0.75 / 1024),
+    File_Size_KB: Math.round(cleanBase64.length * 0.75 / 1024),
     Drive_File_ID: localFileId,
-    Drive_View_URL: `data:${payload.type};base64,${payload.base64}`,
+    Drive_View_URL: `https://drive.google.com/drive/folders/${DRIVE_FOLDER_ID}`,
     Uploaded_By: payload.userEmail,
     Uploaded_At: timestamp,
   };
@@ -95,13 +135,14 @@ export async function uploadToGoogleDrive(payload: AttachmentUploadPayload) {
  * Appends record into Google Sheet 1hRAW8P6_zWD-pGDxXohn7kOisp_QQlm8dsA8N8iFGiE
  */
 export async function appendToGoogleSheet(action: string, data: any, userEmail: string, role: string, explicitGasUrl?: string) {
-  const targetUrl = explicitGasUrl || gasEndpointUrl;
+  const targetUrl = explicitGasUrl || getGasEndpoint();
   if (targetUrl) {
     try {
       const response = await fetch(targetUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         redirect: 'follow',
+        signal: AbortSignal.timeout(12000),
         body: JSON.stringify({
           action,
           role,
@@ -124,7 +165,7 @@ export async function appendToGoogleSheet(action: string, data: any, userEmail: 
   }
 
   return {
-    status: 'success',
+    status: 'unconfigured',
     message: 'บันทึกข้อมูลในเครื่องเรียบร้อยแล้ว (ยังไม่ได้ระบุ Web App URL)',
   };
 }
@@ -249,6 +290,7 @@ export async function proxyToGas(targetUrl: string, method: string = 'GET', payl
         'Accept': 'application/json',
       },
       redirect: 'follow',
+      signal: AbortSignal.timeout(12000),
     };
 
     if (method === 'POST') {

@@ -19,6 +19,7 @@ import { AssessmentModal } from './components/AssessmentModal';
 import { PatientFeedbackModal } from './components/PatientFeedbackModal';
 import { ErDiagramModal } from './components/ErDiagramModal';
 import { PatientProfileModal } from './components/PatientProfileModal';
+import { GasConnectionModal } from './components/GasConnectionModal';
 import { HealthEpisode, Patient, ClinicalAssessment } from './types/healthSystem';
 import { Activity } from 'lucide-react';
 
@@ -56,6 +57,7 @@ const MainApp: React.FC = () => {
 
   const [isErModalOpen, setIsErModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [isGasModalOpen, setIsGasModalOpen] = useState(false);
 
   // Success Notification toast
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -113,6 +115,7 @@ const MainApp: React.FC = () => {
               currentTab={currentTab}
               onOpenMobileMenu={() => setMobileMenuOpen(true)}
               openProfileModal={() => setIsProfileModalOpen(true)}
+              openGasModal={() => setIsGasModalOpen(true)}
             />
 
             <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 flex-1 w-full">
@@ -207,7 +210,11 @@ const MainApp: React.FC = () => {
         onClose={() => setIsProfileModalOpen(false)}
       />
 
-
+      {/* Google Sheets & Drive Connection Modal */}
+      <GasConnectionModal
+        isOpen={isGasModalOpen}
+        onClose={() => setIsGasModalOpen(false)}
+      />
     </div>
   );
 };

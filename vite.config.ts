@@ -139,7 +139,7 @@ function geminiApiPlugin(): Plugin {
           } else {
             res.setHeader('Content-Type', 'application/json');
             res.statusCode = 200;
-            res.end(JSON.stringify({ success: true, isConnected: Boolean(getGasEndpoint()) }));
+            res.end(JSON.stringify({ success: true, isConnected: Boolean(getGasEndpoint()), gasUrl: getGasEndpoint() }));
             return;
           }
         }

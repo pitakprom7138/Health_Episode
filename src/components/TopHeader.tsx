@@ -1,19 +1,21 @@
 import React from 'react';
-import { Menu, HeartPulse, PhoneCall, User, Stethoscope, ShieldCheck } from 'lucide-react';
+import { Menu, HeartPulse, PhoneCall, User, Stethoscope, ShieldCheck, Link2 } from 'lucide-react';
 import { useHealthSystem } from '../context/HealthSystemContext';
 
 interface TopHeaderProps {
   currentTab: string;
   onOpenMobileMenu: () => void;
   openProfileModal?: () => void;
+  openGasModal?: () => void;
 }
 
 export const TopHeader: React.FC<TopHeaderProps> = ({
   currentTab,
   onOpenMobileMenu,
   openProfileModal,
+  openGasModal,
 }) => {
-  const { currentUser } = useHealthSystem();
+  const { currentUser, gasWebAppUrl } = useHealthSystem();
 
   if (!currentUser) return null;
 
@@ -64,6 +66,23 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
 
         {/* Right: Quick Emergency button & User Profile trigger */}
         <div className="flex items-center gap-2 sm:gap-3">
+          {openGasModal && (
+            <button
+              onClick={openGasModal}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold border transition cursor-pointer ${
+                gasWebAppUrl
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
+                  : 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
+              }`}
+              title="ตั้งค่าการเชื่อมต่อ Google Sheets & Drive"
+            >
+              <span className={`w-2 h-2 rounded-full ${gasWebAppUrl ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+              <span className="hidden md:inline">
+                {gasWebAppUrl ? 'Sheet & Drive เชื่อมต่อแล้ว' : 'ตั้งค่า Web App'}
+              </span>
+            </button>
+          )}
+
           <a
             href="tel:1669"
             className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition"

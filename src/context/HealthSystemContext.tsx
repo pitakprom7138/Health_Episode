@@ -390,58 +390,75 @@ export const HealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     }
   };
 
-  // Sync to LocalStorage
+  // Sync to LocalStorage (Safely guarded against QuotaExceededError)
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY}_patients`, JSON.stringify(patients));
+    try { localStorage.setItem(`${STORAGE_KEY}_patients`, JSON.stringify(patients)); } catch (e) {}
   }, [patients]);
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY}_patientMedications`, JSON.stringify(patientMedications));
+    try { localStorage.setItem(`${STORAGE_KEY}_patientMedications`, JSON.stringify(patientMedications)); } catch (e) {}
   }, [patientMedications]);
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY}_healthEpisodes`, JSON.stringify(healthEpisodes));
+    try { localStorage.setItem(`${STORAGE_KEY}_healthEpisodes`, JSON.stringify(healthEpisodes)); } catch (e) {}
   }, [healthEpisodes]);
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY}_clinicalAssessments`, JSON.stringify(clinicalAssessments));
+    try { localStorage.setItem(`${STORAGE_KEY}_clinicalAssessments`, JSON.stringify(clinicalAssessments)); } catch (e) {}
   }, [clinicalAssessments]);
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY}_medicationCatalog`, JSON.stringify(medicationCatalog));
+    try { localStorage.setItem(`${STORAGE_KEY}_medicationCatalog`, JSON.stringify(medicationCatalog)); } catch (e) {}
   }, [medicationCatalog]);
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY}_episodeMedications`, JSON.stringify(episodeMedications));
+    try { localStorage.setItem(`${STORAGE_KEY}_episodeMedications`, JSON.stringify(episodeMedications)); } catch (e) {}
   }, [episodeMedications]);
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY}_clinicalActions`, JSON.stringify(clinicalActions));
+    try { localStorage.setItem(`${STORAGE_KEY}_clinicalActions`, JSON.stringify(clinicalActions)); } catch (e) {}
   }, [clinicalActions]);
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY}_assessmentDataSources`, JSON.stringify(assessmentDataSources));
+    try { localStorage.setItem(`${STORAGE_KEY}_assessmentDataSources`, JSON.stringify(assessmentDataSources)); } catch (e) {}
   }, [assessmentDataSources]);
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY}_followups`, JSON.stringify(followups));
+    try { localStorage.setItem(`${STORAGE_KEY}_followups`, JSON.stringify(followups)); } catch (e) {}
   }, [followups]);
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY}_patientFeedbacks`, JSON.stringify(patientFeedbacks));
+    try { localStorage.setItem(`${STORAGE_KEY}_patientFeedbacks`, JSON.stringify(patientFeedbacks)); } catch (e) {}
   }, [patientFeedbacks]);
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY}_attachments`, JSON.stringify(attachments));
+    try {
+      // Never store massive raw base64 data in browser LocalStorage (prevents QuotaExceededError and browser freeze)
+      const sanitized = attachments.map(att => {
+        const copy = { ...att };
+        if (copy.Preview_Data_URL && copy.Preview_Data_URL.startsWith('data:')) {
+          delete copy.Preview_Data_URL;
+        }
+        if (copy.Drive_View_URL && copy.Drive_View_URL.startsWith('data:')) {
+          copy.Drive_View_URL = `https://drive.google.com/drive/folders/${DRIVE_FOLDER_ID}`;
+        }
+        return copy;
+      });
+      localStorage.setItem(`${STORAGE_KEY}_attachments`, JSON.stringify(sanitized));
+    } catch (e) {
+      console.warn('LocalStorage attachments save safely handled:', e);
+    }
   }, [attachments]);
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY}_users`, JSON.stringify(users));
+    try { localStorage.setItem(`${STORAGE_KEY}_users`, JSON.stringify(users)); } catch (e) {}
   }, [users]);
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY}_pharmacists`, JSON.stringify(pharmacists));
+    try { localStorage.setItem(`${STORAGE_KEY}_pharmacists`, JSON.stringify(pharmacists)); } catch (e) {}
   }, [pharmacists]);
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY}_labResults`, JSON.stringify(labResults));
+    try { localStorage.setItem(`${STORAGE_KEY}_labResults`, JSON.stringify(labResults)); } catch (e) {}
   }, [labResults]);
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY}_auditLogs`, JSON.stringify(auditLogs));
+    try { localStorage.setItem(`${STORAGE_KEY}_auditLogs`, JSON.stringify(auditLogs)); } catch (e) {}
   }, [auditLogs]);
   useEffect(() => {
-    if (currentUserId) {
-      localStorage.setItem(`${STORAGE_KEY}_currentUserId`, currentUserId);
-    } else {
-      localStorage.removeItem(`${STORAGE_KEY}_currentUserId`);
-    }
+    try {
+      if (currentUserId) {
+        localStorage.setItem(`${STORAGE_KEY}_currentUserId`, currentUserId);
+      } else {
+        localStorage.removeItem(`${STORAGE_KEY}_currentUserId`);
+      }
+    } catch (e) {}
   }, [currentUserId]);
 
   // Derived: Current User Object (null when logged out)
@@ -571,7 +588,10 @@ export const HealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     const cleanEmail = params.email.trim().toLowerCase();
     const existing = users.find(u => u.Email.trim().toLowerCase() === cleanEmail);
     if (existing) {
-      return { success: false, message: 'อีเมลนี้ถูกใช้งานแล้วในระบบ กรุณาใช้อีเมลอื่น หรือเข้าสู่ระบบ' };
+      return {
+        success: false,
+        message: `อีเมล ${cleanEmail} มีอยู่ในระบบแล้ว (${existing.Full_Name}) ท่านสามารถสลับไปที่แท็บ "เข้าสู่ระบบ" เพื่อลงชื่อเข้าใช้ด้วยเบอร์โทรศัพท์ได้ทันที`,
+      };
     }
 
     const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
@@ -725,7 +745,7 @@ export const HealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       File_Type: file.type,
       File_Size_KB: file.sizeKb,
       Drive_File_ID: `FILE_${Date.now()}`,
-      Drive_View_URL: file.dataUrl || '',
+      Drive_View_URL: `https://drive.google.com/drive/folders/${DRIVE_FOLDER_ID}`,
       Preview_Data_URL: file.dataUrl,
       Uploaded_By: currentUser?.Email || 'system@patient',
       Uploaded_At: new Date().toISOString().replace('T', ' ').substring(0, 19),
@@ -748,23 +768,16 @@ export const HealthProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           recordId,
           userEmail: currentUser?.Email || 'system',
         }),
-      }).catch(err => console.warn('Background Drive upload task queued:', err.message));
-
-      saveToGoogleSheetRealtime(
-        'uploadFileToDrive',
-        {
-          fileData: {
-            name: file.name,
-            type: file.type,
-            base64: base64Data,
-            recordType,
-            recordId,
-            folderId: DRIVE_FOLDER_ID,
-          },
-        },
-        currentUser?.Role || 'Patient',
-        currentUser?.Email || 'system'
-      );
+      })
+        .then(res => res.json())
+        .then(res => {
+          if (res.success && res.attachment) {
+            setAttachments(prev =>
+              prev.map(a => (a.Attachment_ID === newAttachmentId ? { ...a, ...res.attachment } : a))
+            );
+          }
+        })
+        .catch(err => console.warn('Background Drive upload task queued:', err.message));
     }
 
     return newAttachment;

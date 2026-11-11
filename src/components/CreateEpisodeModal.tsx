@@ -161,26 +161,111 @@ export const CreateEpisodeModal: React.FC<CreateEpisodeModalProps> = ({
     );
   };
 
-  // Handle file selection (convert to dataUrl for preview & Drive simulation)
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Fast client-side image compression to prevent memory freeze and fast upload
+  const compressImage = (file: File): Promise<{ dataUrl: string; sizeKb: number }> => {
+    return new Promise(resolve => {
+      let isSettled = false;
+      const finish = (dataUrl: string, sizeKb: number) => {
+        if (!isSettled) {
+          isSettled = true;
+          resolve({ dataUrl, sizeKb });
+        }
+      };
+
+      // 3-second safety watchdog so UI can NEVER hang under any condition
+      const timer = setTimeout(() => {
+        finish('', Math.round(file.size / 1024));
+      }, 3000);
+
+      if (!file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onload = ev => {
+          clearTimeout(timer);
+          const res = (ev.target?.result as string) || '';
+          finish(res, Math.round(file.size / 1024));
+        };
+        reader.onerror = () => {
+          clearTimeout(timer);
+          finish('', Math.round(file.size / 1024));
+        };
+        reader.readAsDataURL(file);
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = ev => {
+        const rawResult = (ev.target?.result as string) || '';
+        const img = new Image();
+        img.onload = () => {
+          clearTimeout(timer);
+          try {
+            const maxDim = 1000;
+            let width = img.width;
+            let height = img.height;
+
+            if (width > maxDim || height > maxDim) {
+              if (width > height) {
+                height = Math.round((height * maxDim) / width);
+                width = maxDim;
+              } else {
+                width = Math.round((width * maxDim) / height);
+                height = maxDim;
+              }
+            }
+
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.drawImage(img, 0, 0, width, height);
+              const compressed = canvas.toDataURL('image/jpeg', 0.75);
+              const sizeKb = Math.round((compressed.length * 0.75) / 1024);
+              finish(compressed, sizeKb);
+            } else {
+              finish(rawResult, Math.round(file.size / 1024));
+            }
+          } catch {
+            finish(rawResult, Math.round(file.size / 1024));
+          }
+        };
+        img.onerror = () => {
+          clearTimeout(timer);
+          finish(rawResult, Math.round(file.size / 1024));
+        };
+        img.src = rawResult;
+      };
+      reader.onerror = () => {
+        clearTimeout(timer);
+        finish('', Math.round(file.size / 1024));
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  // Handle file selection
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    Array.from(files).forEach(file => {
-      const reader = new FileReader();
-      reader.onload = ev => {
+    try {
+      for (const file of Array.from(files)) {
+        const { dataUrl, sizeKb } = await compressImage(file);
         setUploadedFiles(prev => [
           ...prev,
           {
             name: file.name,
             type: file.type || 'image/jpeg',
-            sizeKb: Math.round(file.size / 1024),
-            dataUrl: ev.target?.result as string,
+            sizeKb,
+            dataUrl,
           },
         ]);
-      };
-      reader.readAsDataURL(file);
-    });
+      }
+    } catch (err) {
+      console.warn('File read error:', err);
+    } finally {
+      e.target.value = '';
+    }
   };
 
   // AI Organize Symptoms handler
